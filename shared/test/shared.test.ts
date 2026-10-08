@@ -9,6 +9,7 @@ import {
   normalizeAccount,
   relativeTime,
   resolveSettings,
+  untilTime,
 } from '../src';
 
 describe('normalizeAccount', () => {
@@ -131,4 +132,14 @@ describe('urls/time', () => {
     expect(relativeTime('2026-01-01T11:55:00Z', now)).toBe('5 min ago');
     expect(relativeTime('2026-01-01T09:00:00Z', now)).toBe('3 h ago');
   });
+});
+
+describe('untilTime', () => {
+  const now = Date.parse('2026-01-01T12:00:00Z');
+  it.each([
+    ['2026-01-01T11:00:00Z', 'due'],
+    ['2026-01-01T12:10:00Z', 'in 10 min'],
+    ['2026-01-01T15:00:00Z', 'in 3 h'],
+    ['2026-01-04T12:00:00Z', 'in 3 d'],
+  ])('%s → %s', (iso, out) => expect(untilTime(iso, now)).toBe(out));
 });

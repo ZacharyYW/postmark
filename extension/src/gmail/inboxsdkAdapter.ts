@@ -244,11 +244,13 @@ class InboxSdkMessage implements MessageViewHandle {
     }
   }
 
-  getThreadSenders(): string[] {
+  getLaterSenders(): string[] {
     try {
-      return this.mv
-        .getThreadView()
-        .getMessageViewsAll()
+      const all = this.mv.getThreadView().getMessageViewsAll();
+      const idx = all.indexOf(this.mv);
+      if (idx < 0) return [];
+      return all
+        .slice(idx + 1)
         .map((m) => {
           try {
             return m.getSender().emailAddress;

@@ -58,10 +58,17 @@ async function main(): Promise<void> {
     });
   });
 
+  // Aliases learned in earlier sessions (persisted by the SW) widen this tab's scope immediately.
+  const stored = await chrome.storage.local.get('accountAliases');
+  const known =
+    (stored.accountAliases as Record<string, string[]> | undefined)?.[account ?? ''] ?? [];
+  known.forEach((a) => aliases.add(a));
+
   startGmailSurfaces({
     adapter,
     bus,
     account,
+    aliases: () => [...aliases],
     onUpdate: (fn) => {
       listeners.add(fn);
       return () => listeners.delete(fn);

@@ -6,6 +6,6 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./test/setup.ts'],
-    css: { modules: { classNameStrategy: 'non-scoped' } },
+    css: { include: /.+/, modules: { classNameStrategy: 'non-scoped' } },
   },
 });

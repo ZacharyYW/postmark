@@ -1,2 +1,8 @@
 import { render } from 'preact';
-render(<p>Postmark</p>, document.getElementById('app')!);
+import '../styles/tokens.css';
+import { Popup } from './Popup';
+
+render(
+  <Popup onOpenOptions={() => void chrome.runtime.openOptionsPage()} />,
+  document.getElementById('app')!,
+);

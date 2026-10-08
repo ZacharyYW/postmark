@@ -49,8 +49,8 @@ export interface MessageViewHandle {
   getMessageId(): Promise<string | null>;
   getThreadId(): Promise<string | null>;
   getSenderEmail(): string | null;
-  /** Senders of every message in the thread, in order (for reply detection). */
-  getThreadSenders(): string[];
+  /** Senders of the messages that come after this one in the thread (for reply detection). */
+  getLaterSenders(): string[];
   /** Insert `el` right above the message body. Returns false if the hook point is unavailable. */
   mountAboveBody(el: HTMLElement): boolean;
   isLoaded(): boolean;

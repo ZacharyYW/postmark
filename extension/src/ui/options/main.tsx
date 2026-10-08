@@ -1,2 +1,5 @@
 import { render } from 'preact';
-render(<p>Postmark settings</p>, document.getElementById('app')!);
+import '../styles/tokens.css';
+import { Options } from './Options';
+
+render(<Options />, document.getElementById('app')!);

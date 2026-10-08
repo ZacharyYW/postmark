@@ -1,0 +1,24 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.muted {
+  color: var(--pm-muted);
+}
+.ok {
+  color: var(--pm-ok);
+}
+.warn {
+  color: var(--pm-warn);
+}
+.info {
+  color: var(--pm-info);
+}
+.icon {
+  width: 14px;
+  height: 14px;
+}

@@ -1,0 +1,232 @@
+.app {
+  width: 400px;
+  min-height: 480px;
+  max-height: 600px;
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--pm-border);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--pm-accent);
+}
+.brand img {
+  width: 20px;
+  height: 20px;
+}
+.spacer {
+  flex: 1;
+}
+.select {
+  font: inherit;
+  color: inherit;
+  background: var(--pm-surface);
+  border: 1px solid var(--pm-border);
+  border-radius: 6px;
+  padding: 3px 6px;
+  max-width: 190px;
+}
+.iconBtn {
+  all: unset;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  color: var(--pm-muted);
+  display: inline-flex;
+}
+.iconBtn:hover {
+  color: var(--pm-accent);
+  background: var(--pm-surface);
+}
+.iconBtn:focus-visible {
+  outline: 2px solid var(--pm-focus);
+}
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 12px 0;
+  border-bottom: 1px solid var(--pm-border);
+}
+.tab {
+  all: unset;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-bottom: 2px solid transparent;
+  color: var(--pm-muted);
+  font-weight: 600;
+}
+.tab[aria-selected='true'] {
+  color: var(--pm-accent);
+  border-bottom-color: var(--pm-accent);
+}
+.tab:focus-visible {
+  outline: 2px solid var(--pm-focus);
+}
+.search {
+  margin: 8px 12px;
+}
+.search input {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  background: var(--pm-surface);
+  border: 1px solid var(--pm-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 8px;
+  overflow-y: auto;
+  flex: 1;
+}
+.row {
+  all: unset;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--pm-border);
+  cursor: pointer;
+}
+.row:hover {
+  background: var(--pm-surface);
+}
+.row:focus-visible {
+  outline: 2px solid var(--pm-focus);
+  outline-offset: -2px;
+}
+.row[aria-disabled='true'] {
+  cursor: default;
+}
+.to {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.subject {
+  color: var(--pm-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.time {
+  color: var(--pm-muted);
+  font-size: 12px;
+  text-align: right;
+  white-space: nowrap;
+}
+.meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+}
+.chipLine {
+  grid-column: 1 / -1;
+  display: flex;
+}
+.chip {
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--pm-surface);
+  border: 1px solid var(--pm-border);
+  color: var(--pm-muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.state {
+  padding: 32px 24px;
+  text-align: center;
+  color: var(--pm-muted);
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+}
+.state h2 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--pm-text);
+}
+.state p {
+  margin: 0;
+}
+.primary {
+  all: unset;
+  cursor: pointer;
+  background: var(--pm-accent);
+  color: var(--pm-accent-text);
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-weight: 600;
+}
+.primary:focus-visible {
+  outline: 2px solid var(--pm-focus);
+  outline-offset: 2px;
+}
+.link {
+  all: unset;
+  cursor: pointer;
+  color: var(--pm-accent);
+  text-decoration: underline;
+}
+.skeleton {
+  height: 46px;
+  margin: 8px 12px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--pm-surface), var(--pm-border), var(--pm-surface));
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite;
+}
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+.remRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--pm-border);
+}
+.danger {
+  all: unset;
+  cursor: pointer;
+  color: var(--pm-danger);
+  font-size: 12px;
+}
+.danger:focus-visible {
+  outline: 2px solid var(--pm-focus);
+}
+.footer {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--pm-muted);
+  border-top: 1px solid var(--pm-border);
+}
