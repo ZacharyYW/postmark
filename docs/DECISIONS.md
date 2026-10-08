@@ -14,3 +14,9 @@ Each entry: id, decision, why, alternatives considered.
 | D-008 | `/v1/events` polling uses a server-issued opaque cursor (monotonic event id), not timestamps. `since=<iso>` is still accepted for compatibility. | Avoids clock skew between client and server. |
 | D-009 | Gmail account switch reloads the page (`/u/N`), so each content-script instance reports exactly one account. The SW maps `tabId → account` in `chrome.storage.session`. | Matches Gmail behaviour; survives SW restarts. |
 | D-010 | Docker base `node:20-bookworm-slim`. | `better-sqlite3` prebuilds need glibc. |
+| D-011 | Server is bundled with esbuild (`server/build.mjs`); `better-sqlite3` stays external. `/shared` ships TS source (no build step). | One build artifact, no TS project-reference plumbing; Vite/vitest/tsx consume TS directly. |
+| D-012 | Vitest 4.1.11 instead of 3.x. | 3.x pulls in tinypool with critical advisories (GHSA-5gmw-xhrv-c9v3); 4.1.11 is patched and supports Vite 6. |
+| D-013 | `GET /v1/events` with neither `cursor` nor `since` returns no events plus the current high-water cursor. | A fresh install or re-login shouldn't replay historical notifications. |
+| D-014 | Added `GET /v1/messages/:id/pixel` (owner only) and `PATCH /v1/reminders/:id`. | The simulate script needs the pixel URL. The service worker marks reminders fired/satisfied. |
+| D-015 | Rate-limited pixel requests still get the GIF and rate-limited link clicks still redirect; neither is recorded. | Never break a recipient's email rendering or navigation. Redirects only go to registered URLs, so there's no abuse vector. |
+| D-016 | `POST /v1/messages` with a `clientRequestId` that is already bound to a sent Gmail message → 409. | Prevents re-using one compose id for two different sends. |

@@ -1,0 +1,19 @@
+services:
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    ports:
+      - '8787:8787'
+    environment:
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8787}
+      EXTENSION_IDS: ${EXTENSION_IDS:-}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      DEV_ALLOW_TOKEN_ROTATION: ${DEV_ALLOW_TOKEN_ROTATION:-false}
+      APPLE_MPP_CIDRS: ${APPLE_MPP_CIDRS:-17.0.0.0/8}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - postmark-data:/data
+    restart: unless-stopped
+volumes:
+  postmark-data:

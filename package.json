@@ -1,0 +1,38 @@
+{
+  "name": "postmark",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "extension"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p scripts/tsconfig.json",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build -w server && npm run build -w extension",
+    "verify": "npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build",
+    "dev:server": "npm run dev -w server",
+    "seed": "tsx scripts/seed.ts",
+    "simulate": "tsx scripts/simulate-open.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "eslint": "9.39.5",
+    "eslint-config-prettier": "10.1.8",
+    "globals": "16.5.0",
+    "prettier": "3.6.2",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.69.0",
+    "tsx": "4.20.6",
+    "vitest": "4.1.11",
+    "@types/node": "22.20.5"
+  }
+}
