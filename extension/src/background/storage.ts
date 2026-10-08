@@ -17,6 +17,8 @@ export interface QueuedNote {
 export interface LocalState {
   auth: { token: string; email: string };
   serverUrl: string;
+  /** Public origins the server has issued pixel/link URLs on (most recent first). */
+  trackingOrigins: string[];
   globalSettings: Partial<GlobalSettings>;
   accountsCache: AccountInfo[];
   pollCursor: string;

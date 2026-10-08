@@ -8,17 +8,20 @@ import { dispatch } from '../src/bus/router';
 import { PostmarkService } from '../src/background/service';
 import type { BodyModifier, ComposeHandle } from '../src/gmail/adapter';
 
-export const SERVER = 'http://pm.test';
+export const SERVER = 'https://pm.test';
 export const EXT_ID = 'abcdefghijklmnopabcdefghijklmnop';
 
 /** Spins up the real server (in-memory SQLite) and the real SW service wired through the bus. */
-export function createHarness() {
+export function createHarness(opts: { publicBaseUrl?: string } = {}) {
   const clock = { now: Date.parse('2026-03-01T12:00:00Z') };
   const db = openDb(':memory:');
   const big = () => new TokenBucketLimiter(100_000, 10_000);
   const server = createApp({
     db,
-    env: loadEnv({ PUBLIC_BASE_URL: SERVER, IP_HASH_SALT: 'harness-salt-1234567' }),
+    env: loadEnv({
+      PUBLIC_BASE_URL: opts.publicBaseUrl ?? SERVER,
+      IP_HASH_SALT: 'harness-salt-1234567',
+    }),
     now: () => clock.now,
     getSocketIp: () => '198.51.100.20',
     limiters: { publicByIp: big(), publicByResource: big(), registerByIp: big(), apiByUser: big() },

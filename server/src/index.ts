@@ -1,9 +1,21 @@
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { serve } from '@hono/node-server';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { createApp } from './app';
 import { openDb } from './db/db';
 import { loadEnv } from './env';
 
+// Load .env (project root or server/) when present; real environment variables win.
+for (const p of ['.env', '../.env']) {
+  if (existsSync(p)) {
+    const before = { ...process.env };
+    process.loadEnvFile(p);
+    Object.assign(process.env, before);
+    console.log(`Loaded settings from ${resolve(p)}`);
+    break;
+  }
+}
 const env = loadEnv();
 const db = openDb(env.DATABASE_PATH);
 const log = (msg: string) => {

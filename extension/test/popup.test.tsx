@@ -21,13 +21,23 @@ function mount(bus: BusClient, prefs = memoryPrefs(), onOpenOptions = () => {}) 
   );
 }
 
-const loggedIn = { loggedIn: true, email: 'me@x.com', serverUrl: 'http://localhost:8787' };
+const loggedIn = {
+  loggedIn: true,
+  email: 'me@x.com',
+  serverUrl: 'http://localhost:8787',
+  trackingOrigins: [],
+};
 
 describe('popup states', () => {
   it('logged-out', async () => {
     let opened = false;
     const { client } = fakeBus({
-      GET_AUTH_STATE: () => ({ loggedIn: false, email: null, serverUrl: 'http://localhost:8787' }),
+      GET_AUTH_STATE: () => ({
+        loggedIn: false,
+        email: null,
+        serverUrl: 'http://localhost:8787',
+        trackingOrigins: [],
+      }),
     });
     mount(client, memoryPrefs(), () => (opened = true));
     await screen.findByText('Sign in to Postmark');

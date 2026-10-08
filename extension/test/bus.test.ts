@@ -11,7 +11,12 @@ function handlers(overrides: Partial<Handlers>): Handlers {
 describe('bus router', () => {
   it('routes to the handler and wraps data', async () => {
     const h = handlers({
-      GET_AUTH_STATE: async () => ({ loggedIn: true, email: 'a@b.com', serverUrl: 's' }),
+      GET_AUTH_STATE: async () => ({
+        loggedIn: true,
+        email: 'a@b.com',
+        serverUrl: 's',
+        trackingOrigins: [],
+      }),
     });
     const r = await dispatch(
       h,
@@ -19,7 +24,10 @@ describe('bus router', () => {
       { id: EXT, url: `chrome-extension://${EXT}/popup.html` },
       EXT,
     );
-    expect(r).toEqual({ ok: true, data: { loggedIn: true, email: 'a@b.com', serverUrl: 's' } });
+    expect(r).toEqual({
+      ok: true,
+      data: { loggedIn: true, email: 'a@b.com', serverUrl: 's', trackingOrigins: [] },
+    });
   });
 
   it('maps HandlerError to a typed error envelope', async () => {

@@ -32,7 +32,11 @@ export type Env = z.infer<typeof EnvSchema> & {
 };
 
 export function loadEnv(source: Record<string, string | undefined> = process.env): Env {
-  const parsed = EnvSchema.parse(source);
+  // Treat empty values (e.g. `IP_HASH_SALT=` copied from .env.example) as unset.
+  const cleaned = Object.fromEntries(
+    Object.entries(source).filter(([, v]) => v !== undefined && v.trim() !== ''),
+  );
+  const parsed = EnvSchema.parse(cleaned);
   return {
     ...parsed,
     PUBLIC_BASE_URL: parsed.PUBLIC_BASE_URL.replace(/\/+$/, ''),

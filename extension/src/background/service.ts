@@ -113,6 +113,23 @@ export class PostmarkService {
     await this.schedulePolling();
   }
 
+  /** Remember where pixels are served from, so the compose script can spot our own links/pixels. */
+  async rememberTrackingOrigin(pixelUrl: string): Promise<void> {
+    let origin: string;
+    try {
+      origin = new URL(pixelUrl).origin;
+    } catch {
+      return;
+    }
+    await serialized(async () => {
+      const seen = (await getLocal('trackingOrigins')) ?? [];
+      if (seen[0] === origin) return;
+      await setLocal({
+        trackingOrigins: [origin, ...seen.filter((o) => o !== origin)].slice(0, 5),
+      });
+    });
+  }
+
   async rememberAccount(account: string): Promise<void> {
     await serialized(async () => {
       const known = new Set((await getLocal('knownAccounts')) ?? []);
@@ -397,7 +414,7 @@ export class PostmarkService {
           await this.setTabAccount(ctx.tabId, scope.account, [...scope.aliases, sender]);
         }
         await this.rememberAccount(sender);
-        return this.api.createMessage(
+        const created = await this.api.createMessage(
           {
             senderAccount: sender,
             subject: p.subject,
@@ -407,6 +424,8 @@ export class PostmarkService {
           },
           TIMING.PRESEND_TIMEOUT_MS,
         );
+        await this.rememberTrackingOrigin(created.pixelUrl);
+        return created;
       },
 
       BIND_SENT: async (p, ctx) => {
@@ -496,11 +515,17 @@ export class PostmarkService {
       },
 
       GET_AUTH_STATE: async () => {
-        const [auth, serverUrl] = await Promise.all([getLocal('auth'), getLocal('serverUrl')]);
+        const [auth, serverUrl, seen] = await Promise.all([
+          getLocal('auth'),
+          getLocal('serverUrl'),
+          getLocal('trackingOrigins'),
+        ]);
+        const base = serverUrl ?? DEFAULT_SERVER_URL;
         return {
           loggedIn: Boolean(auth),
           email: auth?.email ?? null,
-          serverUrl: serverUrl ?? DEFAULT_SERVER_URL,
+          serverUrl: base,
+          trackingOrigins: [...new Set([base, ...(seen ?? [])])],
         };
       },
 

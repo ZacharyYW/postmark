@@ -30,6 +30,7 @@ function scripted(loggedIn: boolean) {
       loggedIn: state.loggedIn,
       email: state.loggedIn ? 'me@x.com' : null,
       serverUrl: 'http://localhost:8787',
+      trackingOrigins: [],
     }),
     GET_SETTINGS: () => ({ global: state.global, account: null, resolved: state.global }),
     UPDATE_GLOBAL_SETTINGS: (p) => (state.global = { ...state.global, ...p }),

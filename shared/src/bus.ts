@@ -54,7 +54,13 @@ export interface BusMap {
   };
   GET_AUTH_STATE: {
     req: Record<string, never>;
-    res: { loggedIn: boolean; email: string | null; serverUrl: string };
+    res: {
+      loggedIn: boolean;
+      email: string | null;
+      serverUrl: string;
+      /** Origins pixels/links have been served from (the public base URL may differ from serverUrl). */
+      trackingOrigins: string[];
+    };
   };
   REGISTER: { req: { email: string; serverUrl?: string }; res: { email: string } };
   /** Sign in with an existing token (e.g. the one printed by `npm run seed`). */

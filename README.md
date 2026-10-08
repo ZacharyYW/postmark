@@ -89,6 +89,22 @@ npm run build -w extension               # → extension/dist
 
 For tracking with real recipients, the server must be reachable from the internet over https (for example behind a tunnel or reverse proxy). Set `PUBLIC_BASE_URL` to it, and in Options save the same URL as the server. Chrome will ask for permission to contact it.
 
+## Getting real read receipts (public tracking URL)
+
+Recipients' mail clients (and Gmail's image proxy) must be able to fetch the pixel, so the server needs a **public https address**. The extension can keep talking to `http://localhost:8787`; only the pixel and link URLs have to be public.
+
+1. Install a tunnel: `brew install cloudflared`.
+2. Run `cloudflared tunnel --url http://localhost:8787` and copy the `https://….trycloudflare.com` address it prints.
+3. In `.env` at the repo root, set:
+   ```
+   PUBLIC_BASE_URL=https://<your-address>.trycloudflare.com
+   TRUST_PROXY=true
+   ```
+4. Restart the server (`npm run dev:server`). It prints `Public base URL: https://…`.
+5. Send a new tracked email to another inbox and open it there.
+
+Quick tunnels get a new address every time `cloudflared` restarts, and emails sent earlier keep the old address, so their opens stop registering. For lasting use, set up a [named Cloudflare tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) or deploy the Docker image behind a domain.
+
 ## Demo without a second inbox
 
 ```bash

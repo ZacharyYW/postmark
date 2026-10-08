@@ -766,3 +766,12 @@ describe('client IP behind a proxy', () => {
     expect(last).toBe(429);
   });
 });
+
+describe('env loading', () => {
+  it('treats empty values as unset', async () => {
+    const { loadEnv } = await import('../src/env');
+    const env = loadEnv({ IP_HASH_SALT: '', EXTENSION_IDS: '', PORT: '9000' });
+    expect(env.IP_HASH_SALT).toBeUndefined();
+    expect(env.PORT).toBe(9000);
+  });
+});

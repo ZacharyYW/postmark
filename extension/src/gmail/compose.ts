@@ -80,10 +80,12 @@ export function attachCompose(compose: ComposeHandle, deps: ComposeDeps): Compos
     if (!auth.ok || !auth.data.loggedIn) {
       return untracked(body, 'Postmark: not signed in, sent without tracking');
     }
-    const origin = toOrigin(auth.data.serverUrl);
-    if (!origin) return untracked(body);
+    const known = (auth.data.trackingOrigins ?? [auth.data.serverUrl])
+      .map(toOrigin)
+      .filter((o): o is string => o !== null);
+    if (known.length === 0) return untracked(body);
 
-    if (hasPostmarkPixel(body, origin)) return { body }; // already tracked (draft resend)
+    if (hasPostmarkPixel(body, known)) return { body }; // already tracked (draft resend)
 
     const recipients = [
       ...new Set(
@@ -96,7 +98,7 @@ export function attachCompose(compose: ComposeHandle, deps: ComposeDeps): Compos
     if (recipients.length === 0) return { body };
 
     const settings = await deps.bus.send('GET_SETTINGS', { account: sender }, { timeoutMs: 1000 });
-    const links = collectLinks(body, origin);
+    const links = collectLinks(body, known);
     const res = await deps.bus.send(
       'PREPARE_TRACKING',
       {
@@ -112,12 +114,17 @@ export function attachCompose(compose: ComposeHandle, deps: ComposeDeps): Compos
       logOnce(`prepare failed: ${res.error.code}`, res.error.message);
       return untracked(body);
     }
-    // Defence in depth: only ever insert URLs on the configured tracking server
-    // (a misconfigured or hostile server must not be able to inject other URLs into mail).
+    // Defence in depth: the pixel and every tracked link must live on one tracking host (the
+    // server's public base URL), over https (http only for localhost), under /p/ and /l/.
+    // A misconfigured or hostile server must not be able to inject other URLs into mail.
+    const origin = toOrigin(res.data.pixelUrl);
+    const okOrigin =
+      origin !== null &&
+      (origin.startsWith('https://') || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin));
     const onOrigin = (u: string, path: string) => {
       try {
         const url = new URL(u);
-        return url.origin === origin && url.pathname.startsWith(path);
+        return okOrigin && url.origin === origin && url.pathname.startsWith(path);
       } catch {
         return false;
       }
@@ -132,7 +139,7 @@ export function attachCompose(compose: ComposeHandle, deps: ComposeDeps): Compos
     state.messageId = res.data.messageId;
     return {
       body: applyTracking(body, {
-        trackingOrigin: origin,
+        trackingOrigin: [...known, origin ?? ''].filter(Boolean),
         pixelUrl: res.data.pixelUrl,
         rewrittenLinks: res.data.rewrittenLinks,
         disclosureFooter: settings.ok ? settings.data.resolved.disclosureFooter : false,

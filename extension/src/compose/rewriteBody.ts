@@ -1,5 +1,10 @@
 import { isTrackableHref, toOrigin } from '@postmark/shared';
 
+/** One origin, or several (the API server and the public pixel/link host may differ). */
+export type Origins = string | readonly string[];
+const list = (o: Origins): readonly string[] => (typeof o === 'string' ? [o] : o);
+const trackable = (href: string, o: Origins) => list(o).every((x) => isTrackableHref(href, x));
+
 /**
  * Pure HTML transforms for the outgoing email body. No network, no Gmail APIs: input HTML in,
  * output HTML out. Only the *fresh* part of the body (what the user just typed, including their
@@ -21,7 +26,7 @@ export const PIXEL_MARKER_ATTR = 'data-postmark';
 export const DISCLOSURE_TEXT = 'Read receipts enabled (Postmark)';
 
 export interface TrackingPayload {
-  trackingOrigin: string;
+  trackingOrigin: Origins;
   pixelUrl: string;
   rewrittenLinks: { original: string; trackedUrl: string }[];
   disclosureFooter?: boolean;
@@ -56,17 +61,18 @@ function freshAnchors(doc: Document): HTMLAnchorElement[] {
   return [...doc.body.querySelectorAll<HTMLAnchorElement>('a[href]')].filter((a) => !isQuoted(a));
 }
 
-function isPostmarkPixel(img: HTMLImageElement, trackingOrigin: string): boolean {
+function isPostmarkPixel(img: HTMLImageElement, trackingOrigins: Origins): boolean {
   if (img.hasAttribute(PIXEL_MARKER_ATTR)) return true;
-  const origin = toOrigin(trackingOrigin);
-  if (!origin) return false;
   const src = img.getAttribute('src') ?? '';
-  // Gmail may rewrite draft images to googleusercontent proxy URLs that embed the original after '#'.
-  return src.startsWith(`${origin}/p/`) || src.includes(`#${origin}/p/`);
+  return list(trackingOrigins).some((raw) => {
+    const origin = toOrigin(raw);
+    // Gmail may rewrite draft images to googleusercontent proxy URLs that embed the original after '#'.
+    return origin !== null && (src.startsWith(`${origin}/p/`) || src.includes(`#${origin}/p/`));
+  });
 }
 
 /** True when the fresh part of the body already carries a Postmark pixel (resend / reopened draft). */
-export function hasPostmarkPixel(html: string, trackingOrigin: string): boolean {
+export function hasPostmarkPixel(html: string, trackingOrigin: Origins): boolean {
   const doc = parse(html);
   return [...doc.body.querySelectorAll<HTMLImageElement>('img')].some(
     (img) => !isQuoted(img) && isPostmarkPixel(img, trackingOrigin),
@@ -74,13 +80,13 @@ export function hasPostmarkPixel(html: string, trackingOrigin: string): boolean 
 }
 
 /** Eligible links in the fresh part, de-duplicated, in document order. */
-export function collectLinks(html: string, trackingOrigin: string): string[] {
+export function collectLinks(html: string, trackingOrigin: Origins): string[] {
   const doc = parse(html);
   const out: string[] = [];
   const seen = new Set<string>();
   for (const a of freshAnchors(doc)) {
     const href = (a.getAttribute('href') ?? '').trim();
-    if (!isTrackableHref(href, trackingOrigin) || seen.has(href)) continue;
+    if (!trackable(href, trackingOrigin) || seen.has(href)) continue;
     seen.add(href);
     out.push(href);
   }
@@ -93,7 +99,7 @@ export function applyTracking(html: string, p: TrackingPayload): string {
   const map = new Map(p.rewrittenLinks.map((l) => [l.original, l.trackedUrl]));
   for (const a of freshAnchors(doc)) {
     const href = (a.getAttribute('href') ?? '').trim();
-    if (!isTrackableHref(href, p.trackingOrigin)) continue;
+    if (!trackable(href, p.trackingOrigin)) continue;
     const tracked = map.get(href);
     if (tracked) a.setAttribute('href', tracked); // text & children untouched
   }

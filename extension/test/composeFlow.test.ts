@@ -408,3 +408,46 @@ describe('orphaned content script', () => {
     expect(toasts).toEqual([TOAST_RELOAD]);
   });
 });
+
+describe('public tracking host differs from the API URL (e.g. an https tunnel)', () => {
+  it('tracks with pixel/links on the public host and later recognises them as ours', async () => {
+    const PUBLIC = 'https://abc-tunnel.trycloudflare.com';
+    const h = createHarness({ publicBaseUrl: PUBLIC });
+    await signIn(h);
+    const bus = h.busFor(7);
+    await bus.send('ACTIVE_ACCOUNT', { account: 'me@work.com' });
+    const toasts: string[] = [];
+    const deps = {
+      bus,
+      adapter: { toast: (t: string) => toasts.push(t) },
+      tabAccount: 'me@work.com',
+      bindRetryDelaysMs: [0],
+    };
+    const c1 = new FakeCompose('pub-1', 'me@work.com', ['you@example.com']);
+    attachCompose(c1, deps);
+    await flush();
+    const sent = await c1.send(BODY);
+    expect(toasts).toEqual([]);
+    expect(sent).toContain(`${PUBLIC}/p/`);
+    expect(sent).toContain(`${PUBLIC}/l/`);
+    await flush();
+    // Forwarding that exact body again: our public-host pixel is recognised → not double-tracked.
+    const c2 = new FakeCompose('pub-2', 'me@work.com', ['you@example.com']);
+    attachCompose(c2, deps);
+    await flush();
+    expect(await c2.send(sent, { threadId: 't2', messageId: 'm2' })).toBe(sent);
+  });
+
+  it('rejects a plain-http public host that is not localhost', async () => {
+    const h = createHarness({ publicBaseUrl: 'http://track.example.com' });
+    await signIn(h);
+    const bus = h.busFor(7);
+    await bus.send('ACTIVE_ACCOUNT', { account: 'me@work.com' });
+    const toasts: string[] = [];
+    const c = new FakeCompose('pub-3', 'me@work.com', ['you@example.com']);
+    attachCompose(c, { bus, adapter: { toast: (t) => toasts.push(t) }, tabAccount: 'me@work.com' });
+    await flush();
+    expect(await c.send(BODY)).toBe(BODY);
+    expect(toasts).toEqual([TOAST_UNTRACKED]);
+  });
+});
