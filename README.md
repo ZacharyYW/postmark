@@ -2,21 +2,20 @@
 
 Probabilistic read receipts and link-click tracking for Gmail: a Chrome (MV3) extension plus a small self-hosted server.
 
-> **Status: v0.1.0 (developer preview).**
+> **Status: v0.2.0.** Verified end-to-end in live Gmail with the server on Cloudflare Workers (free, 24/7).
 
 ## What works / what's flaky / what's next
 
-**Works (verified by 260+ automated tests, a headless-Chrome load of the built extension, and live server runs):**
+**Works (verified in live Gmail, plus ~300 automated tests, headless-Chrome checks and live server runs):**
 - Server: auth, messages, events, accounts, reminders, `DELETE /v1/me`; pixel and redirect with classification (Gmail proxy / Apple MPP / bot / sender), dedupe, per-account self-open suppression, settle-window polling cursor, rate limits, retention. Docker image builds and serves.
 - Extension: the send-path rewrite (links, pixel, disclosure line, quotes untouched, idempotent across Undo Send, fail-soft in ≤ 3 s); service-worker polling, notifications, reminders and the multi-account tab scope; popup and options in every state, light and dark. Tested end-to-end against the real server with a mocked Gmail adapter.
 - Demo: `npm run seed` + `npm run simulate` show opens, auto-loads, bot exclusion and self-view suppression without a second inbox.
 
 **Flaky / unverified:**
-- **Not yet exercised in live Gmail.** This environment has no Gmail session. The InboxSDK hooks were written against InboxSDK 2.2.27's typings and are break-tested with a mocked SDK, but the compose button, list marks and thread strip have not been seen in a real Gmail tab. Start with the [manual checklist](#manual-test-checklist-gmail).
-- The InboxSDK dev placeholder app id may show a warning, or be refused by InboxSDK. Register a free id if Gmail hooks don't appear.
+- Confirmed in live Gmail: compose eye toggle, tracked sends, real opens and clicks via the Cloudflare deployment, notifications, Sent-list marks, activity history. Edge cases on the [manual checklist](#manual-test-checklist-gmail) (aliases, multi-account, Undo Send, reminders) are covered by tests but worth a manual pass.
 - Open detection is heuristic by nature (MPP, proxy caching, scanners). See [Known limitations](#known-limitations).
 
-**Next:** Google OAuth sign-in via `chrome.identity`, push instead of polling, a background re-bind for sends whose `sent` event was missed, and a Gmail-API-based reply check for "no reply" reminders.
+**Next:** Google OAuth sign-in via `chrome.identity`, push instead of polling, a background re-bind for sends whose `sent` event was missed, a Gmail-API-based reply check for "no reply" reminders, and optional per-recipient tracking for group emails.
 
 - ✓ / ✓✓ marks in Gmail's Sent list (grey = sent, green = opened, amber = possibly auto-loaded), plus a link-click icon
 - A "Tracking" strip under each of your tracked messages in a thread: opens (first/last), per-link clicks, and a **Remind me** button

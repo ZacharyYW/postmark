@@ -19,3 +19,4 @@
 | Fixes from live testing | ✅ | Telemetry guard answers locally; content scripts left behind by an extension reload stay quiet; server reads `.env`; separate public tracking host supported. |
 | Cloudflare Workers + D1 deployment | ✅ | Async DB layer; Worker entry and cron; `npm run deploy:cloudflare`; verified locally in Wrangler's workerd runtime (seed, simulate, self-view suppression, event polling). Real deploy needs the owner's Cloudflare login. |
 | Full activity history | ✅ | Popup detail view and Gmail strip "Show full activity"; rendered and checked in headless Chrome. |
+| Live verification | ✅ | Deployed to Cloudflare Workers (`postmark.<subdomain>.workers.dev`), registration locked to the owner; owner confirmed tracking works in live Gmail. Tagged v0.2.0. |

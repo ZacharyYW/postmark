@@ -1,6 +1,6 @@
 {
   "name": "@postmark/server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@hono/node-server": "1.19.17",
-    "@postmark/shared": "0.1.0",
+    "@postmark/shared": "0.2.0",
     "better-sqlite3": "12.11.1",
     "hono": "4.13.8",
     "nanoid": "5.1.16",

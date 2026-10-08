@@ -1,6 +1,6 @@
 {
   "name": "@postmark/extension",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@inboxsdk/core": "2.2.27",
-    "@postmark/shared": "0.1.0",
+    "@postmark/shared": "0.2.0",
     "preact": "10.29.8",
     "zod": "3.25.76"
   },
