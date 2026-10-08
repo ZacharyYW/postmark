@@ -228,6 +228,9 @@ export function apiRoutes(d: ApiDeps): Hono<AppEnv> {
     const patch = parseOr400(PatchAccountReq, await jsonBody(c));
     const settings = repo.getUserSettings(user.id);
     const accounts = { ...(settings.accounts ?? {}) };
+    if (!(account in accounts) && Object.keys(accounts).length >= 100) {
+      throw new ApiHttpError(400, 'TOO_MANY_ACCOUNTS', 'Too many accounts with custom settings');
+    }
     const current: AccountSettings = { ...(accounts[account] ?? {}) };
     for (const key of ['trackingDefault', 'notificationsEnabled', 'quietHours'] as const) {
       if (!(key in patch)) continue;

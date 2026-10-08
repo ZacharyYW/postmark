@@ -18,7 +18,12 @@ type ThreadRowView = InboxSDK.ThreadRowView;
 type MessageView = InboxSDK.MessageView;
 
 export async function loadInboxSdkAdapter(appId: string): Promise<GmailAdapter> {
-  const sdk = await InboxSDK.load(2, appId, { appName: 'Postmark' } as never);
+  // Opt out of everything InboxSDK lets us; the rest is blocked by telemetryGuard.ts.
+  const sdk = await InboxSDK.load(2, appId, {
+    appName: 'Postmark',
+    eventTracking: false,
+    globalErrorLogging: false,
+  } as never);
   return new InboxSdkAdapter(sdk);
 }
 

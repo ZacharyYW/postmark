@@ -1,3 +1,4 @@
+import './installGuard'; // must stay the first import (privacy guard for InboxSDK telemetry)
 import { isPushEnvelope, normalizeAccount, type PushMap } from '@postmark/shared';
 import { createBusClient } from '../bus/client';
 import { INBOXSDK_APP_ID } from '../config';

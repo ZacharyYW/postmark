@@ -17,7 +17,7 @@ if (env.DEV_ALLOW_TOKEN_ROTATION) {
   log('DEV_ALLOW_TOKEN_ROTATION is on: anyone can re-register an existing email. Dev only!');
 }
 
-const { app } = createApp({
+const { app, repo } = createApp({
   db,
   env,
   log,
@@ -35,7 +35,21 @@ const server = serve({ fetch: app.fetch, port: env.PORT, hostname: env.HOST }, (
   console.log(`Public base URL: ${env.PUBLIC_BASE_URL}`);
 });
 
+const housekeeping = () => {
+  try {
+    const r = repo.purge(Date.now(), env.RETENTION_DAYS);
+    if (r.messages > 0)
+      log(`retention: deleted ${r.messages} messages older than ${env.RETENTION_DAYS} days`);
+  } catch (err) {
+    log(`housekeeping failed: ${(err as Error).message}`);
+  }
+};
+housekeeping();
+const housekeepingTimer = setInterval(housekeeping, 6 * 3_600_000);
+housekeepingTimer.unref();
+
 const shutdown = () => {
+  clearInterval(housekeepingTimer);
   server.close();
   db.close();
   process.exit(0);

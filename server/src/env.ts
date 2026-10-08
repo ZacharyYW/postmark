@@ -21,6 +21,8 @@ const EnvSchema = z.object({
   APPLE_MPP_CIDRS: z.string().default('17.0.0.0/8'),
   /** Optional fixed salt for IP hashing; otherwise a random per-install salt is stored in the DB. */
   IP_HASH_SALT: z.string().min(16).optional(),
+  /** Delete tracked messages (and their events) older than this many days. 0 = keep forever. */
+  RETENTION_DAYS: z.coerce.number().int().min(0).max(3650).default(0),
   LOG_LEVEL: z.enum(['silent', 'error', 'info', 'debug']).default('info'),
 });
 

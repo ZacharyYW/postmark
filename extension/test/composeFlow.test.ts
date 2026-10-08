@@ -326,3 +326,50 @@ describe('send-path races', () => {
     expect((await h.service.api.listMessages({ limit: 10 })).messages).toHaveLength(1);
   });
 });
+
+describe('R2: hostile server responses', () => {
+  it('refuses to insert tracking URLs outside the tracking origin', async () => {
+    const { createBusClient } = await import('../src/bus/client');
+    const bus = createBusClient(async (env) => {
+      if (env.type === 'GET_AUTH_STATE')
+        return { ok: true, data: { loggedIn: true, email: 'x', serverUrl: SERVER } };
+      if (env.type === 'GET_SETTINGS')
+        return {
+          ok: true,
+          data: {
+            global: {},
+            account: null,
+            resolved: { trackingDefault: true, disclosureFooter: false },
+          },
+        };
+      if (env.type === 'PREPARE_TRACKING')
+        return {
+          ok: true,
+          data: {
+            messageId: 'm',
+            pixelId: 'p',
+            pixelUrl: `${SERVER}/p/x.gif`,
+            rewrittenLinks: [
+              {
+                original: 'https://example.com/doc',
+                trackedUrl: 'javascript:alert(1)',
+                linkId: 'l',
+              },
+            ],
+          },
+        };
+      return { ok: true, data: { ok: true } };
+    });
+    const toasts: string[] = [];
+    const c = new FakeCompose('hostile', 'me@work.com', ['you@example.com']);
+    attachCompose(c, {
+      bus,
+      adapter: { toast: (t) => toasts.push(t) },
+      tabAccount: 'me@work.com',
+      iconUrl: () => 'x',
+    });
+    await flush();
+    expect(await c.send(BODY)).toBe(BODY);
+    expect(toasts).toEqual([TOAST_UNTRACKED]);
+  });
+});

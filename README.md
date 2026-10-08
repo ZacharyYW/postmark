@@ -45,6 +45,7 @@ npm run verify              # typecheck, lint, format check, all tests, both bui
 | `DEV_ALLOW_TOKEN_ROTATION` | `false` | server: dev only |
 | `APPLE_MPP_CIDRS` | `17.0.0.0/8` | server: Apple MPP egress ranges |
 | `IP_HASH_SALT` | *(random, stored in DB)* | server |
+| `RETENTION_DAYS` | `0` (keep) | server: delete tracked messages and events older than N days |
 | `VITE_POSTMARK_SERVER` | `http://localhost:8787` | extension build: default server URL (changeable in Options) |
 | `VITE_INBOXSDK_APP_ID` | `sdk_POSTMARK_DEV_PLACEHOLDER` | extension build: register a free id at <https://www.inboxsdk.com/register> |
 
@@ -59,6 +60,8 @@ docker compose up --build                # data persisted in the postmark-data v
 ```
 
 `GET /healthz` returns `{"ok":true}`.
+
+In production, put the server behind an https reverse proxy and set `TRUST_PROXY=true`. Without it (for example plain Docker port mapping), every request appears to come from one IP, which weakens dedupe and the unique-open counts. Set `EXTENSION_IDS` to your extension id so CORS accepts only it.
 
 ## Build and load the extension
 
@@ -135,7 +138,7 @@ Before you start: the server is running, the extension is loaded, you're signed 
 
 ## Privacy & legal
 
-- The extension sends the server only the **subject, recipient addresses, tracked URLs and sending account** of each tracked email. **Never the body.** It talks to no one else: no analytics, ads or third-party calls.
+- The extension sends the server only the **subject, recipient addresses, tracked URLs and sending account** of each tracked email. **Never the body.** It talks to no one else: no analytics, ads or third-party calls. InboxSDK's built-in telemetry to its vendor is blocked inside the extension (see `docs/REVIEW-2-security.md`).
 - The server stores salted IP hashes and a coarse client class, never raw IPs or user agents. **Options → Delete my data** erases everything server-side.
 - Email tracking may require consent or disclosure depending on where you and your recipients are (e.g. ePrivacy/GDPR in the EU/UK, various US state laws). **You are responsible for compliance.** The optional disclosure line ("Read receipts enabled") can help.
 - Auth is **dev-grade** (email + bearer token, no verification). The production plan is Google OAuth via `chrome.identity` (see `docs/DECISIONS.md` D-006).

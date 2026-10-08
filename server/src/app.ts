@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import { secureHeaders } from 'hono/secure-headers';
 import type { DB } from './db/db';
@@ -57,7 +58,9 @@ export function createApp(opts: AppOptions): CreatedApp {
 
   const getIp = (c: Context<AppEnv>): string => {
     if (env.TRUST_PROXY) {
-      const fwd = c.req.header('x-forwarded-for')?.split(',')[0]?.trim();
+      // The right-most entry was appended by our own reverse proxy; earlier entries are
+      // client-controlled and could be spoofed to dodge rate limits or dedupe.
+      const fwd = c.req.header('x-forwarded-for')?.split(',').pop()?.trim();
       if (fwd) return normalizeIp(fwd);
     }
     return normalizeIp(opts.getSocketIp?.(c) ?? 'unknown');
@@ -103,6 +106,14 @@ export function createApp(opts: AppOptions): CreatedApp {
       allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
       allowHeaders: ['Authorization', 'Content-Type'],
       maxAge: 600,
+    }),
+  );
+  app.use(
+    '/v1/*',
+    bodyLimit({
+      maxSize: 256 * 1024,
+      onError: (c) =>
+        c.json({ error: { code: 'TOO_LARGE', message: 'Request body too large' } }, 413),
     }),
   );
   app.route(

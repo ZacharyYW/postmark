@@ -108,6 +108,23 @@ export function attachCompose(compose: ComposeHandle, deps: ComposeDeps): Compos
       logOnce(`prepare failed: ${res.error.code}`, res.error.message);
       return untracked(body);
     }
+    // Defence in depth: only ever insert URLs on the configured tracking server
+    // (a misconfigured or hostile server must not be able to inject other URLs into mail).
+    const onOrigin = (u: string, path: string) => {
+      try {
+        const url = new URL(u);
+        return url.origin === origin && url.pathname.startsWith(path);
+      } catch {
+        return false;
+      }
+    };
+    if (
+      !onOrigin(res.data.pixelUrl, '/p/') ||
+      !res.data.rewrittenLinks.every((l) => onOrigin(l.trackedUrl, '/l/'))
+    ) {
+      logOnce('server returned tracking URLs outside the tracking origin; sending untracked');
+      return untracked(body);
+    }
     state.messageId = res.data.messageId;
     return {
       body: applyTracking(body, {

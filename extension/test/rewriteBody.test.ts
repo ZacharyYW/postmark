@@ -211,3 +211,49 @@ describe('hasPostmarkPixel / findQuoteStart', () => {
     expect(findQuoteStart(doc.body)?.className).toBe('gmail_quote_container');
   });
 });
+
+describe('odd bodies (R2 break tests)', () => {
+  it('full HTML documents, comments and stray markup', () => {
+    const html =
+      '<html><head><style>p{}</style></head><body><!-- c --><p>Hi <a href="https://a.com">a</a></p></body></html>';
+    const { out } = track(html);
+    expect(out).toContain(`${ORIGIN}/l/LINK0`);
+    expect(out).toContain('<img');
+  });
+
+  it('uppercase schemes, newlines and entities in hrefs', () => {
+    const links = collectLinks(
+      '<a href="HTTPS://Example.com/A">x</a><a href="\n https://b.com/x?a=1&amp;b=2 \n">y</a>',
+      ORIGIN,
+    );
+    expect(links).toEqual(['HTTPS://Example.com/A', 'https://b.com/x?a=1&b=2']);
+  });
+
+  it('malformed nested anchors do not crash', () => {
+    const { doc } = track(
+      '<a href="https://outer.com">outer <a href="https://inner.com">inner</a></a>',
+    );
+    expect(doc.querySelectorAll(`a[href^="${ORIGIN}/l/"]`).length).toBeGreaterThan(0);
+  });
+
+  it('RTL text and emoji survive untouched', () => {
+    const { out } = track('<div dir="rtl">שלום 👋 <a href="https://a.com">קישור</a></div>');
+    expect(out).toContain('שלום 👋');
+    expect(out).toContain('קישור');
+  });
+
+  it('script tags in a body are not executed or added', () => {
+    const { out } = track('<div>x</div><script>window.__pwned = 1</script>');
+    expect((window as unknown as { __pwned?: number }).__pwned).toBeUndefined();
+    expect(out.match(/<script/g)?.length ?? 0).toBeLessThanOrEqual(1);
+  });
+
+  it('only-whitespace and only-quote bodies', () => {
+    expect(track('   ').doc.querySelectorAll('img')).toHaveLength(1);
+    const { doc } = track(
+      '<div class="gmail_quote">only quoted <a href="https://q.com">q</a></div>',
+    );
+    expect(doc.querySelector('.gmail_quote a')!.getAttribute('href')).toBe('https://q.com');
+    expect(doc.querySelector('.gmail_quote')!.previousElementSibling?.tagName).toBe('IMG');
+  });
+});

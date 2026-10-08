@@ -660,3 +660,109 @@ describe('cross-cutting', () => {
     expect(r.status).toBe(404);
   });
 });
+
+describe('R2 hardening', () => {
+  it('rejects oversized bodies (even without content-length)', async () => {
+    const ctx = makeCtx();
+    const token = await ctx.register('u@x.com');
+    const big = JSON.stringify({
+      senderAccount: 'a@b.com',
+      subject: 'x'.repeat(300_000),
+      recipients: ['c@d.com'],
+      links: [],
+    });
+    const r = await ctx.req('/v1/messages', {
+      method: 'POST',
+      token,
+      body: big,
+      headers: { 'Content-Type': 'application/json' },
+    });
+    expect(r.status).toBe(413);
+  });
+
+  it('caps the number of per-account settings entries', async () => {
+    const ctx = makeCtx();
+    const token = await ctx.register('u@x.com');
+    for (let i = 0; i < 100; i++) {
+      expect(
+        (
+          await ctx.req(`/v1/accounts/a${i}@x.com`, {
+            method: 'PATCH',
+            token,
+            json: { trackingDefault: true },
+          })
+        ).status,
+      ).toBe(200);
+    }
+    expect(
+      (
+        await ctx.req('/v1/accounts/a0@x.com', {
+          method: 'PATCH',
+          token,
+          json: { trackingDefault: false },
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await ctx.req('/v1/accounts/z@x.com', {
+          method: 'PATCH',
+          token,
+          json: { trackingDefault: true },
+        })
+      ).status,
+    ).toBe(400);
+  });
+
+  it('purge drops stale self-views and, with retention, old messages + events', async () => {
+    const ctx = makeCtx();
+    const token = await ctx.register('u@x.com');
+    const m = await createMessage(ctx, token);
+    ctx.advance(60_000);
+    await ctx.req(`/v1/messages/${m.messageId}/self-view`, {
+      method: 'POST',
+      token,
+      json: { account: 'me@work.com' },
+    });
+    await pixel(ctx, m.pixelId, UA.gmail);
+    ctx.advance(2 * 86_400_000);
+    expect(ctx.repo.purge(ctx.clock.now, 0)).toEqual({ selfViews: 1, messages: 0 });
+    ctx.advance(30 * 86_400_000);
+    expect(ctx.repo.purge(ctx.clock.now, 30)).toEqual({ selfViews: 0, messages: 1 });
+    expect((await ctx.req(`/v1/messages/${m.messageId}`, { token })).status).toBe(404);
+  });
+
+  it('never stores raw IPs or user agents', async () => {
+    const ctx = makeCtx();
+    const token = await ctx.register('u@x.com');
+    const m = await createMessage(ctx, token);
+    ctx.advance(60_000);
+    ctx.ip.value = '203.0.113.99';
+    await pixel(ctx, m.pixelId, 'Mozilla/5.0 UniqueAgentString/1.2.3');
+    const dump = JSON.stringify(
+      (ctx.repo as unknown as { db: { prepare(s: string): { all(): unknown[] } } }).db
+        .prepare('SELECT * FROM events')
+        .all(),
+    );
+    expect(dump).not.toContain('203.0.113.99');
+    expect(dump).not.toContain('UniqueAgentString');
+  });
+});
+
+describe('client IP behind a proxy', () => {
+  it('uses the right-most X-Forwarded-For entry (client cannot spoof)', async () => {
+    const ctx = makeCtx({ TRUST_PROXY: 'true' }, false);
+    // Exhaust the registration limit while claiming a different IP each time.
+    let last = 0;
+    for (let i = 0; i < 8; i++) {
+      last = (
+        await ctx.req('/v1/auth/register', {
+          method: 'POST',
+          json: { email: `u${i}@x.com` },
+          headers: { 'X-Forwarded-For': `10.0.0.${i}, 198.51.100.7` },
+        })
+      ).status;
+    }
+    expect(last).toBe(429);
+  });
+});

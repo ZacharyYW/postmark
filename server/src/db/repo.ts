@@ -504,6 +504,26 @@ export class Repo {
     }));
   }
 
+  // ---------- retention ----------
+
+  /**
+   * Housekeeping. Self-view beacons are only useful for ±20 s, so drop them after a day.
+   * With `retentionDays > 0`, also delete messages (and, by cascade, their links, events and
+   * reminders) older than that.
+   */
+  purge(now: number, retentionDays: number): { selfViews: number; messages: number } {
+    const selfViews = this.db
+      .prepare('DELETE FROM self_views WHERE viewed_at < ?')
+      .run(now - 86_400_000).changes;
+    const messages =
+      retentionDays > 0
+        ? this.db
+            .prepare('DELETE FROM messages WHERE sent_at < ?')
+            .run(now - retentionDays * 86_400_000).changes
+        : 0;
+    return { selfViews, messages };
+  }
+
   // ---------- accounts ----------
 
   accounts(userId: string): AccountInfo[] {

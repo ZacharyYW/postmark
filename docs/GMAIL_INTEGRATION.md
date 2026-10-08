@@ -8,6 +8,8 @@ All Gmail-touching code lives in `extension/src/gmail/`. Only `inboxsdkAdapter.t
 2. `sdk.User.getEmailAddress()` gives the tab's account. The content script sends `ACTIVE_ACCOUNT {account, aliases}` to the service worker, which stores `tabId → {account, aliases}` in `chrome.storage.session`. The report is repeated on `visibilitychange`, in case the worker restarted or the extension was reloaded. Switching Gmail accounts loads a new page (`/mail/u/N`), so each content-script instance has exactly one account.
 3. "Send as" aliases seen in compose windows (`getFromContactChoices()`) join the tab's scope. They are persisted per primary account so later sessions know them right away.
 
+Privacy guard: `installGuard.ts` is the content script's first import. It blocks InboxSDK's built-in telemetry (`api.inboxsdk.com`, Pub/Sub) inside our isolated world. See REVIEW-2 S1.
+
 MV3 requirement: the service worker imports `@inboxsdk/core/background.js`, which injects `pageWorld.js` (copied to the extension root at build time) into Gmail's main world through `chrome.scripting`. This is why the `scripting` permission exists.
 
 ## Hooks
