@@ -16,7 +16,6 @@ async function setup(opts: { signedIn?: boolean; tabAccount?: string | null } = 
       bus,
       adapter: { toast: (t) => toasts.push(t) },
       tabAccount: opts.tabAccount === undefined ? 'me@work.com' : opts.tabAccount,
-      iconUrl: () => 'x',
       bindRetryDelaysMs: [0],
       ...extra,
     });
@@ -97,7 +96,6 @@ describe('compose send flow (mocked Gmail adapter → real SW handlers → real 
       bus,
       adapter: { toast: () => {} },
       tabAccount: 'me@work.com',
-      iconUrl: () => 'x',
       bindRetryDelaysMs: [0],
     });
     await c.send('<div>TOP SECRET BODY TEXT <a href="https://example.com">x</a></div>');
@@ -293,7 +291,6 @@ describe('send-path races', () => {
       bus,
       adapter: { toast: () => {} },
       tabAccount: 'me@work.com',
-      iconUrl: () => 'x',
     });
     await flush();
     // User types, then discards: Gmail never sends, so the modifier never runs.
@@ -309,7 +306,6 @@ describe('send-path races', () => {
       bus,
       adapter: { toast: () => {} },
       tabAccount: 'me@work.com',
-      iconUrl: () => 'x',
       bindRetryDelaysMs: [0],
     };
     const c1 = new FakeCompose('off-1', 'me@work.com', ['you@example.com']);
@@ -366,7 +362,6 @@ describe('R2: hostile server responses', () => {
       bus,
       adapter: { toast: (t) => toasts.push(t) },
       tabAccount: 'me@work.com',
-      iconUrl: () => 'x',
     });
     await flush();
     expect(await c.send(BODY)).toBe(BODY);

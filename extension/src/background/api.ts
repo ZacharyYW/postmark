@@ -106,18 +106,7 @@ export class ApiClient {
   }
 
   // ---------- typed endpoints ----------
-  register(email: string, baseUrlOverride?: string) {
-    if (baseUrlOverride) {
-      return new ApiClient(
-        async () => ({ baseUrl: baseUrlOverride, token: null }),
-        this.fetchImpl,
-      ).request('/v1/auth/register', {
-        method: 'POST',
-        body: { email },
-        auth: false,
-        schema: RegisterRes,
-      });
-    }
+  register(email: string) {
     return this.request('/v1/auth/register', {
       method: 'POST',
       body: { email },

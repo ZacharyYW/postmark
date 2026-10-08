@@ -45,7 +45,6 @@ async function main(): Promise<void> {
       bus,
       adapter,
       tabAccount: account,
-      iconUrl: (on) => chrome.runtime.getURL(on ? 'icons/eye-on.svg' : 'icons/eye-off.svg'),
       onAliases: (seen) => {
         let changed = false;
         for (const a of seen) {

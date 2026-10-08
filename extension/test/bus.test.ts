@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createBusClient, call, BusFailure } from '../src/bus/client';
+import { createBusClient } from '../src/bus/client';
 import { dispatch, HandlerError, type Handlers } from '../src/bus/router';
 
 const EXT = 'abcdefghijklmnopabcdefghijklmnop';
@@ -144,14 +144,5 @@ describe('bus client', () => {
       ok: false,
       error: { code: 'UNKNOWN' },
     });
-  });
-
-  it('call() unwraps or throws BusFailure', async () => {
-    const ok = createBusClient(() => Promise.resolve({ ok: true, data: { ok: true } }));
-    expect(await call(ok, 'LOGOUT', {})).toEqual({ ok: true });
-    const bad = createBusClient(() =>
-      Promise.resolve({ ok: false, error: { code: 'SERVER', message: 'x' } }),
-    );
-    await expect(call(bad, 'LOGOUT', {})).rejects.toBeInstanceOf(BusFailure);
   });
 });

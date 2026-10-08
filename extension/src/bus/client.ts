@@ -1,4 +1,4 @@
-import type { BusEnvelope, BusError, BusReq, BusRes, BusResult, BusType } from '@postmark/shared';
+import type { BusEnvelope, BusReq, BusRes, BusResult, BusType } from '@postmark/shared';
 
 /** Abstraction over chrome.runtime.sendMessage so callers (and tests) don't touch chrome.* directly. */
 export type BusTransport = (envelope: BusEnvelope) => Promise<unknown>;
@@ -52,22 +52,4 @@ export function createBusClient(transport: BusTransport = chromeTransport): BusC
       }
     },
   };
-}
-
-/** Convenience: unwrap or throw a BusFailure. */
-export class BusFailure extends Error {
-  constructor(readonly error: BusError) {
-    super(error.message);
-  }
-}
-
-export async function call<K extends BusType>(
-  client: BusClient,
-  type: K,
-  payload: BusReq<K>,
-  opts?: { timeoutMs?: number },
-): Promise<BusRes<K>> {
-  const r = await client.send(type, payload, opts);
-  if (!r.ok) throw new BusFailure(r.error);
-  return r.data;
 }

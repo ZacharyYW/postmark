@@ -9,7 +9,6 @@ export interface ComposeDeps {
   adapter: Pick<GmailAdapter, 'toast'>;
   /** The Gmail account active in this tab. */
   tabAccount: string | null;
-  iconUrl: (on: boolean) => string;
   /** Called when a compose reveals "Send as" aliases for this tab. */
   onAliases?: (aliases: string[]) => void;
   presendTimeoutMs?: number;

@@ -11,10 +11,6 @@ export function normalizeAccount(raw: string | null | undefined): string | null 
   return EMAIL_RE.test(addr) ? addr : null;
 }
 
-export function isValidAccount(raw: string | null | undefined): boolean {
-  return normalizeAccount(raw) !== null;
-}
-
 /** Short label for chips: local part for long addresses. */
 export function accountChipLabel(account: string): string {
   return account.length <= 24 ? account : (account.split('@')[0] ?? account);

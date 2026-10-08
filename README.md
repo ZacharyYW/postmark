@@ -2,7 +2,21 @@
 
 Probabilistic read receipts and link-click tracking for Gmail: a Chrome (MV3) extension plus a small self-hosted server.
 
-> **Status: v0.1.0 (developer preview).** See [What works / what's flaky / what's next](#what-works--whats-flaky--whats-next).
+> **Status: v0.1.0 (developer preview).**
+
+## What works / what's flaky / what's next
+
+**Works (verified by 260+ automated tests, a headless-Chrome load of the built extension, and live server runs):**
+- Server: auth, messages, events, accounts, reminders, `DELETE /v1/me`; pixel and redirect with classification (Gmail proxy / Apple MPP / bot / sender), dedupe, per-account self-open suppression, settle-window polling cursor, rate limits, retention. Docker image builds and serves.
+- Extension: the send-path rewrite (links, pixel, disclosure line, quotes untouched, idempotent across Undo Send, fail-soft in ≤ 3 s); service-worker polling, notifications, reminders and the multi-account tab scope; popup and options in every state, light and dark. Tested end-to-end against the real server with a mocked Gmail adapter.
+- Demo: `npm run seed` + `npm run simulate` show opens, auto-loads, bot exclusion and self-view suppression without a second inbox.
+
+**Flaky / unverified:**
+- **Not yet exercised in live Gmail.** This environment has no Gmail session. The InboxSDK hooks were written against InboxSDK 2.2.27's typings and are break-tested with a mocked SDK, but the compose button, list marks and thread strip have not been seen in a real Gmail tab. Start with the [manual checklist](#manual-test-checklist-gmail).
+- The InboxSDK dev placeholder app id may show a warning, or be refused by InboxSDK. Register a free id if Gmail hooks don't appear.
+- Open detection is heuristic by nature (MPP, proxy caching, scanners). See [Known limitations](#known-limitations).
+
+**Next:** Google OAuth sign-in via `chrome.identity`, push instead of polling, a background re-bind for sends whose `sent` event was missed, and a Gmail-API-based reply check for "no reply" reminders.
 
 - ✓ / ✓✓ marks in Gmail's Sent list (grey = sent, green = opened, amber = possibly auto-loaded), plus a link-click icon
 - A "Tracking" strip under each of your tracked messages in a thread: opens (first/last), per-link clicks, and a **Remind me** button

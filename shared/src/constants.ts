@@ -35,9 +35,6 @@ export const TIMING = {
   PRESEND_TIMEOUT_MS: 3_000,
 } as const;
 
-export const PIXEL_PATH_PREFIX = '/p/';
-export const LINK_PATH_PREFIX = '/l/';
-export const ID_LENGTH = 21;
 export const ID_PATTERN = /^[A-Za-z0-9_-]{21}$/;
 
 export const LIMITS = {
