@@ -16,7 +16,8 @@ import type { GlobalSettings, ResolvedSettings } from './settings';
  * tab (`sender.tab.id` → tab-account map). Account fields in those payloads are not trusted.
  */
 export interface BusMap {
-  ACTIVE_ACCOUNT: { req: { account: string }; res: { ok: true } };
+  /** Content script → SW on load: the tab's Gmail account plus any "Send as" aliases seen there. */
+  ACTIVE_ACCOUNT: { req: { account: string; aliases?: string[] }; res: { ok: true } };
   PREPARE_TRACKING: {
     req: {
       clientRequestId: string;
@@ -56,6 +57,8 @@ export interface BusMap {
     res: { loggedIn: boolean; email: string | null; serverUrl: string };
   };
   REGISTER: { req: { email: string; serverUrl?: string }; res: { email: string } };
+  /** Sign in with an existing token (e.g. the one printed by `npm run seed`). */
+  CONNECT_TOKEN: { req: { token: string; serverUrl?: string }; res: { email: string } };
   LOGOUT: { req: Record<string, never>; res: { ok: true } };
   DELETE_ME: { req: Record<string, never>; res: { ok: true } };
   SET_SERVER_URL: { req: { serverUrl: string }; res: { serverUrl: string } };

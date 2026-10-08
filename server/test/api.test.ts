@@ -142,6 +142,12 @@ describe('messages', () => {
     );
     expect(work.messages.map((m) => m.senderAccount)).toEqual(['work@corp.com']);
 
+    const multi = await json<{ messages: MessageSummary[] }>(
+      await ctx.req('/v1/messages?accounts=work@corp.com,alias@corp.com', { token }),
+    );
+    expect(multi.messages.map((m) => m.id)).toEqual([a.messageId]);
+    expect((await ctx.req('/v1/messages?accounts=bad', { token })).status).toBe(400);
+
     const byThread = await json<{ messages: MessageSummary[] }>(
       await ctx.req('/v1/messages?threadIds=thrB,zzz', { token }),
     );

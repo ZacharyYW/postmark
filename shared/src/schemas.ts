@@ -161,6 +161,18 @@ export const ListMessagesQuery = z.object({
   since: IsoDate.optional(),
   limit: z.coerce.number().int().min(1).max(LIMITS.LIST_MAX).default(LIMITS.LIST_DEFAULT),
   account: Account.optional(),
+  /** Comma-separated sender accounts (a tab's primary account plus its "Send as" aliases). */
+  accounts: z
+    .string()
+    .max(4000)
+    .transform((s) =>
+      s
+        .split(',')
+        .map((x) => x.trim())
+        .filter(Boolean),
+    )
+    .pipe(z.array(Account).max(50))
+    .optional(),
   threadIds: csv(LIMITS.THREAD_IDS_MAX).optional(),
   q: z.string().max(200).optional(),
 });

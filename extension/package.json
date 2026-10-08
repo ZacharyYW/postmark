@@ -20,7 +20,6 @@
     "@preact/preset-vite": "2.10.6",
     "@testing-library/preact": "3.2.4",
     "@types/chrome": "0.0.332",
-    "jsdom": "26.1.0",
-    "vite": "6.4.3"
+    "jsdom": "26.1.0"
   }
 }

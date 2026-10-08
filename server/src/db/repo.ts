@@ -215,13 +215,24 @@ export class Repo {
 
   listMessageRows(
     userId: string,
-    f: { account?: string; since?: number; threadIds?: string[]; q?: string; limit: number },
+    f: {
+      account?: string;
+      accounts?: string[];
+      since?: number;
+      threadIds?: string[];
+      q?: string;
+      limit: number;
+    },
   ): MessageRow[] {
     const where = ['user_id = @u'];
     const params: Record<string, unknown> = { u: userId, limit: f.limit };
     if (f.account) {
       where.push('sender_account = @account');
       params.account = f.account;
+    }
+    if (f.accounts && f.accounts.length > 0) {
+      where.push('sender_account IN (SELECT value FROM json_each(@accounts))');
+      params.accounts = JSON.stringify(f.accounts);
     }
     if (f.since !== undefined) {
       where.push('sent_at >= @since');

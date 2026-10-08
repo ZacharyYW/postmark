@@ -181,6 +181,7 @@ export function apiRoutes(d: ApiDeps): Hono<AppEnv> {
     const rows = repo.listMessageRows(user.id, {
       limit: q.limit,
       ...(q.account !== undefined && { account: q.account }),
+      ...(q.accounts !== undefined && { accounts: q.accounts }),
       ...(q.since !== undefined && { since: Date.parse(q.since) }),
       ...(q.threadIds !== undefined && { threadIds: q.threadIds }),
       ...(q.q !== undefined && q.q.trim() !== '' && { q: q.q.trim() }),
