@@ -11,6 +11,7 @@ import {
 import { useBus, usePrefs } from '../busContext';
 import { StatusBadge } from '../components/StatusBadge';
 import { lastEventLabel, recipientsLabel } from '../format';
+import { MessageDetail } from './MessageDetail';
 import s from './Popup.module.css';
 
 type Tab = 'recent' | 'reminders';
@@ -42,6 +43,7 @@ export function Popup({ onOpenOptions }: { onOpenOptions: () => void }) {
   const [messages, setMessages] = useState<Load<MessageSummary[]>>({ kind: 'loading' });
   const [reminders, setReminders] = useState<Load<Reminder[]>>({ kind: 'loading' });
   const [booted, setBooted] = useState(false);
+  const [selected, setSelected] = useState<MessageSummary | null>(null);
 
   // Boot: auth → accounts → preselect the active Gmail tab's account (else last selection, else All).
   useEffect(() => {
@@ -168,6 +170,19 @@ export function Popup({ onOpenOptions }: { onOpenOptions: () => void }) {
     );
   }
 
+  if (selected) {
+    return (
+      <div class={s.app}>
+        {header}
+        <MessageDetail
+          message={selected}
+          showAccount={accounts.length > 1}
+          onBack={() => setSelected(null)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div class={s.app}>
       {header}
@@ -206,6 +221,7 @@ export function Popup({ onOpenOptions }: { onOpenOptions: () => void }) {
             query={q}
             onRetry={loadMessages}
             serverUrl={auth.serverUrl}
+            onSelect={setSelected}
           />
         </>
       ) : (
@@ -260,14 +276,15 @@ function RecentList({
   query,
   onRetry,
   serverUrl,
+  onSelect,
 }: {
   state: Load<MessageSummary[]>;
   showChips: boolean;
   query: string;
   onRetry: () => void;
   serverUrl: string;
+  onSelect: (m: MessageSummary) => void;
 }) {
-  const bus = useBus();
   if (state.kind === 'loading') return <Skeletons />;
   if (state.kind === 'error')
     return <ErrorState error={state.error} onRetry={onRetry} serverUrl={serverUrl} />;
@@ -287,21 +304,13 @@ function RecentList({
     <ul class={s.list} aria-label="Tracked emails">
       {state.data.map((m) => {
         const last = lastEventLabel(m);
-        const canOpen = Boolean(m.gmailThreadId);
         return (
           <li key={m.id}>
             <button
               class={s.row}
-              aria-disabled={!canOpen}
-              title={canOpen ? 'Open in Gmail' : 'Waiting for Gmail to confirm the send'}
-              onClick={() => {
-                if (m.gmailThreadId) {
-                  void bus.send('OPEN_THREAD', {
-                    gmailThreadId: m.gmailThreadId,
-                    account: m.senderAccount,
-                  });
-                }
-              }}
+              title="Show full activity"
+              aria-label={`${recipientsLabel(m.recipients)}: ${m.subject || '(no subject)'}. Show details`}
+              onClick={() => onSelect(m)}
             >
               <span class={s.to}>{recipientsLabel(m.recipients)}</span>
               <span class={s.meta}>

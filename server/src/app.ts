@@ -2,9 +2,9 @@ import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import { secureHeaders } from 'hono/secure-headers';
-import type { DB } from './db/db';
-import { loadSecrets } from './db/db';
 import { Repo } from './db/repo';
+import { loadSecrets } from './db/secrets';
+import type { SqlDb } from './db/sql';
 import type { Env } from './env';
 import { ApiHttpError, type AppEnv } from './http';
 import { hashIp } from './lib/crypto';
@@ -15,7 +15,7 @@ import { normalizeIp, parseCidrList } from './tracking/cidr';
 import type { TrackingContext } from './tracking/record';
 
 export interface AppOptions {
-  db: DB;
+  db: SqlDb;
   env: Env;
   now?: () => number;
   /** Override client-IP extraction (tests; the node entry passes socket info). */
@@ -44,14 +44,23 @@ export function createApp(opts: AppOptions): CreatedApp {
   const now = opts.now ?? (() => Date.now());
   const log = opts.log ?? (() => {});
   const repo = new Repo(db);
-  const secrets = loadSecrets(db, env.IP_HASH_SALT);
+  let secretsP: ReturnType<typeof loadSecrets> | null = null;
+  const secrets = () => {
+    secretsP ??= loadSecrets(db, env.IP_HASH_SALT).catch((err: unknown) => {
+      secretsP = null; // retry on the next request
+      throw err;
+    });
+    return secretsP;
+  };
   const limiters = opts.limiters ?? defaultLimiters();
   const tracking: TrackingContext = {
     repo,
-    ipSalt: secrets.ipSalt,
-    signSecret: secrets.signSecret,
+    secrets,
     mppCidrs: parseCidrList(env.APPLE_MPP_CIDRS),
   };
+  const allowedEmails = env.ALLOWED_EMAILS.split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
   const extensionIds = env.EXTENSION_IDS.split(',')
     .map((s) => s.trim())
     .filter(Boolean);
@@ -80,7 +89,7 @@ export function createApp(opts: AppOptions): CreatedApp {
 
   // Hash the IP once per request; raw IPs never leave this middleware (and are never stored).
   app.use('*', async (c, next) => {
-    c.set('ipHash', hashIp(getIp(c), tracking.ipSalt));
+    c.set('ipHash', hashIp(getIp(c), (await secrets()).ipSalt));
     await next();
   });
 
@@ -122,7 +131,10 @@ export function createApp(opts: AppOptions): CreatedApp {
       repo,
       limiters,
       tracking,
-      publicBaseUrl: env.PUBLIC_BASE_URL,
+      // Explicit PUBLIC_BASE_URL wins; otherwise use the request's own origin (Workers: the
+      // permanent *.workers.dev / custom-domain URL, with no configuration needed).
+      publicBaseUrl: (c) => env.PUBLIC_BASE_URL ?? new URL(c.req.url).origin,
+      allowedEmails,
       allowTokenRotation: env.DEV_ALLOW_TOKEN_ROTATION,
       now,
     }),

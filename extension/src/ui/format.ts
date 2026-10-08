@@ -68,9 +68,13 @@ export function lastEventLabel(m: MessageSummary): { text: string; title: string
   return { text: `${prefix} ${relativeTime(iso)}`, title: absoluteTime(iso) };
 }
 
-export function hostOf(url: string): string {
+/** "example.com/pricing" — host plus a short path, so two links on one site stay distinguishable. */
+export function shortUrl(url: string, max = 40): string {
   try {
-    return new URL(url).hostname;
+    const u = new URL(url);
+    const path = u.pathname === '/' ? '' : u.pathname.replace(/\/$/, '');
+    const out = `${u.hostname.replace(/^www\./, '')}${path}`;
+    return out.length > max ? `${out.slice(0, max - 1)}…` : out;
   } catch {
     return url;
   }

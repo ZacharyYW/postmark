@@ -6,8 +6,8 @@ import { ipInCidrs, type parseCidrList } from './cidr';
 
 export interface TrackingContext {
   repo: Repo;
-  ipSalt: string;
-  signSecret: string;
+  /** Per-install secrets, loaded lazily from the DB (memoised). */
+  secrets: () => Promise<{ ipSalt: string; signSecret: string }>;
   mppCidrs: ReturnType<typeof parseCidrList>;
 }
 
@@ -25,20 +25,21 @@ export type RecordOutcome =
 /** Value signed for the `?s=` sender parameter: binds the signature to one resource id. */
 export const senderSigValue = (resourceId: string, account: string) => `${resourceId}|${account}`;
 
-function recordEvent(
+async function recordEvent(
   ctx: TrackingContext,
   message: MessageRow,
   type: EventType,
   linkId: string | null,
   req: RequestInfo,
   resourceId: string,
-): RecordOutcome {
+): Promise<RecordOutcome> {
+  const { ipSalt, signSecret } = await ctx.secrets();
   const input = {
     ua: req.ua,
     msSinceSent: req.now - message.sent_at,
     ipInMppRange: ipInCidrs(req.ip, ctx.mppCidrs),
     senderSigValid: verifyShort(
-      ctx.signSecret,
+      signSecret,
       senderSigValue(resourceId, message.sender_account),
       req.sig,
     ),
@@ -50,59 +51,61 @@ function recordEvent(
   if (
     type === 'open' &&
     uaClass === 'gmail_proxy' &&
-    ctx.repo.hasSelfViewNear(
+    (await ctx.repo.hasSelfViewNear(
       message.id,
       message.sender_account,
       req.now,
       TIMING.SELF_VIEW_WINDOW_MS,
-    )
+    ))
   ) {
     uaClass = 'sender';
   }
 
-  const ipHash = hashIp(req.ip, ctx.ipSalt);
-  return ctx.repo.tx(() => {
-    if (
-      ctx.repo.hasRecentDuplicate({
-        message_id: message.id,
-        link_id: linkId,
-        type,
-        ip_hash: ipHash,
-        ua_class: uaClass,
-        after: req.now - TIMING.DEDUPE_WINDOW_MS,
-      })
-    ) {
-      return { recorded: false, reason: 'duplicate', uaClass } as const;
-    }
-    const eventId = ctx.repo.insertEvent({
+  const ipHash = hashIp(req.ip, ipSalt);
+  // Dedupe is a heuristic; two truly simultaneous hits may both land, which is harmless.
+  if (
+    await ctx.repo.hasRecentDuplicate({
       message_id: message.id,
       link_id: linkId,
       type,
-      occurred_at: req.now,
       ip_hash: ipHash,
       ua_class: uaClass,
-      is_first: 0,
-    });
-    ctx.repo.recomputeFirst(message.id, type, linkId);
-    return { recorded: true, eventId, uaClass } as const;
+      after: req.now - TIMING.DEDUPE_WINDOW_MS,
+    })
+  ) {
+    return { recorded: false, reason: 'duplicate', uaClass };
+  }
+  const eventId = await ctx.repo.insertEvent({
+    message_id: message.id,
+    link_id: linkId,
+    type,
+    occurred_at: req.now,
+    ip_hash: ipHash,
+    ua_class: uaClass,
+    is_first: 0,
   });
+  return { recorded: true, eventId, uaClass };
 }
 
-export function recordOpen(ctx: TrackingContext, pixelId: string, req: RequestInfo): RecordOutcome {
-  const message = ctx.repo.getMessageByPixel(pixelId);
+export async function recordOpen(
+  ctx: TrackingContext,
+  pixelId: string,
+  req: RequestInfo,
+): Promise<RecordOutcome> {
+  const message = await ctx.repo.getMessageByPixel(pixelId);
   if (!message || message.tracking_enabled !== 1) return { recorded: false, reason: 'unknown' };
   return recordEvent(ctx, message, 'open', null, req, pixelId);
 }
 
-export function recordClick(
+export async function recordClick(
   ctx: TrackingContext,
   linkId: string,
   req: RequestInfo,
-): { outcome: RecordOutcome; url: string | null } {
-  const found = ctx.repo.getLinkWithMessage(linkId);
+): Promise<{ outcome: RecordOutcome; url: string | null }> {
+  const found = await ctx.repo.getLinkWithMessage(linkId);
   if (!found) return { outcome: { recorded: false, reason: 'unknown' }, url: null };
   return {
-    outcome: recordEvent(ctx, found.message, 'click', linkId, req, linkId),
+    outcome: await recordEvent(ctx, found.message, 'click', linkId, req, linkId),
     url: found.link.original_url,
   };
 }
@@ -112,21 +115,18 @@ export function recordClick(
  * user's accounts viewing it is a genuine recipient). Reclassifies nearby Gmail-proxy opens,
  * including ones that arrived before the beacon.
  */
-export function recordSelfView(
+export async function recordSelfView(
   ctx: TrackingContext,
   message: MessageRow,
   account: string,
   now: number,
-): { accepted: boolean; reclassified: number } {
+): Promise<{ accepted: boolean; reclassified: number }> {
   if (account !== message.sender_account) return { accepted: false, reclassified: 0 };
-  return ctx.repo.tx(() => {
-    ctx.repo.insertSelfView(message.id, account, now);
-    const reclassified = ctx.repo.reclassifyProxyOpensAsSender(
-      message.id,
-      now,
-      TIMING.SELF_VIEW_WINDOW_MS,
-    );
-    if (reclassified > 0) ctx.repo.recomputeFirst(message.id, 'open', null);
-    return { accepted: true, reclassified };
-  });
+  const reclassified = await ctx.repo.recordSelfView(
+    message.id,
+    account,
+    now,
+    TIMING.SELF_VIEW_WINDOW_MS,
+  );
+  return { accepted: true, reclassified };
 }

@@ -11,7 +11,7 @@ RUN npm ci --workspace server --include-workspace-root=false --ignore-scripts=fa
 COPY tsconfig.base.json ./
 COPY shared shared
 COPY server server
-RUN npm run build -w server && npm prune --omit=dev --workspace server
+RUN npm run build:node -w server && npm prune --omit=dev --workspace server
 
 FROM node:20-bookworm-slim
 ENV NODE_ENV=production DATABASE_PATH=/data/postmark.db PORT=8787

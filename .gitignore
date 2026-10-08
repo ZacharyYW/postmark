@@ -8,3 +8,6 @@ coverage/
 *.tsbuildinfo
 server/data/
 .postmark-demo-token
+server/wrangler.deploy.toml
+server/.wrangler/
+.wrangler/

@@ -68,6 +68,25 @@ function setup(
   const bus = fakeBus({
     GET_THREAD_TRACKING: () => ({ messages }),
     SELF_VIEW: () => ({ ok: true as const }),
+    GET_MESSAGE_EVENTS: () => ({
+      message: messages[0]!,
+      events: [
+        {
+          id: 7,
+          messageId: 'm1',
+          linkId: null,
+          linkUrl: null,
+          type: 'open' as const,
+          occurredAt: new Date().toISOString(),
+          uaClass: 'gmail_proxy' as const,
+          isFirst: true,
+          senderAccount: 'a@work.com',
+          subject: 's',
+          recipients: ['you@example.com'],
+          gmailThreadId: 'T1',
+        },
+      ],
+    }),
     REPORT_REPLY: () => ({ ok: true as const }),
     CREATE_REMINDER: (p) => ({
       id: 'r1',
@@ -107,7 +126,7 @@ describe('thread tracking strip', () => {
     const root = shadowOf(mv)!;
     const section = within(root.querySelector('section') as HTMLElement);
     expect(section.getByText('Opened 3×')).toBeTruthy();
-    expect(section.getByText('example.com')).toBeTruthy();
+    expect(section.getByText('example.com/doc')).toBeTruthy();
     expect(section.getByText('2 clicks')).toBeTruthy();
     expect(section.getByRole('button', { name: /Tracking/ }).getAttribute('aria-expanded')).toBe(
       'true',
@@ -169,6 +188,18 @@ describe('thread tracking strip', () => {
     const days = (Date.parse(call.remindAt) - Date.now()) / 86_400_000;
     expect(days).toBeGreaterThan(2.9);
     expect(days).toBeLessThan(3.1);
+  });
+
+  it('shows the full activity history on demand', async () => {
+    const { bus, show, shadowOf } = setup();
+    const mv = new FakeMessageView('a@work.com');
+    show(mv);
+    await waitFor(() => expect(shadowOf(mv)?.querySelector('section')).toBeTruthy());
+    const section = within(shadowOf(mv)!.querySelector('section') as HTMLElement);
+    expect(bus.calls.some((c) => c.type === 'GET_MESSAGE_EVENTS')).toBe(false); // lazy
+    fireEvent.click(section.getByRole('button', { name: 'Show full activity' }));
+    const timeline = await section.findByRole('list', { name: /Activity history/ });
+    expect(within(timeline).getByText('Opened (in Gmail)')).toBeTruthy();
   });
 
   it('reports a detected reply (later message from someone else)', async () => {

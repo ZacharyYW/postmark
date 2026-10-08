@@ -82,11 +82,19 @@ export function startThreadStrips(deps: ThreadStripDeps) {
     }
     let collapsed = await storage.get().catch(() => false);
     let current = message;
+    let version = 0;
+    const loadActivity = async () => {
+      const r = await deps.bus.send('GET_MESSAGE_EVENTS', { messageId: current.id });
+      if (!r.ok) throw new Error(r.error.message);
+      return r.data.events;
+    };
     const draw = () =>
       render(
         h(TrackingStrip, {
           message: current,
           collapsed,
+          loadActivity,
+          version,
           onToggle: (c: boolean) => {
             collapsed = c;
             void storage.set(c).catch(() => undefined);
@@ -123,6 +131,7 @@ export function startThreadStrips(deps: ThreadStripDeps) {
       const fresh = matchMessage(await fetchThread(threadId, true), gmailMessageId, new Set());
       if (fresh && fresh.id === current.id) {
         current = fresh;
+        version++;
         draw();
       }
     };

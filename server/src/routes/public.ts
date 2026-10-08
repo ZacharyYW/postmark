@@ -23,7 +23,7 @@ export function publicRoutes(d: PublicDeps): Hono<AppEnv> {
   const allowed = (ipKey: string, resourceKey: string) =>
     d.resourceLimiter.take(resourceKey) && d.limiter.take(ipKey);
 
-  app.get('/p/:file', (c) => {
+  app.get('/p/:file', async (c) => {
     const gif = () => c.body(new Uint8Array(TRANSPARENT_GIF), 200, NO_STORE_HEADERS);
     const m = /^([A-Za-z0-9_-]{21})\.gif$/.exec(c.req.param('file'));
     if (!m?.[1]) return gif();
@@ -31,7 +31,7 @@ export function publicRoutes(d: PublicDeps): Hono<AppEnv> {
     // they just aren't recorded.
     if (!allowed(`p:${c.get('ipHash')}`, `p:${c.get('ipHash')}:${m[1]}`)) return gif();
     try {
-      recordOpen(d.tracking, m[1], {
+      await recordOpen(d.tracking, m[1], {
         ip: d.getIp(c),
         ua: c.req.header('user-agent'),
         sig: c.req.query('s'),
@@ -43,20 +43,22 @@ export function publicRoutes(d: PublicDeps): Hono<AppEnv> {
     return gif();
   });
 
-  app.get('/l/:linkId', (c) => {
+  app.get('/l/:linkId', async (c) => {
     const linkId = c.req.param('linkId');
     if (!ID_PATTERN.test(linkId)) return c.html(NOT_FOUND_HTML, 404);
     const limited = !allowed(`l:${c.get('ipHash')}`, `l:${c.get('ipHash')}:${linkId}`);
     let url: string | null;
     if (limited) {
-      url = d.tracking.repo.getLinkWithMessage(linkId)?.link.original_url ?? null;
+      url = (await d.tracking.repo.getLinkWithMessage(linkId))?.link.original_url ?? null;
     } else {
-      url = recordClick(d.tracking, linkId, {
-        ip: d.getIp(c),
-        ua: c.req.header('user-agent'),
-        sig: c.req.query('s'),
-        now: d.now(),
-      }).url;
+      url = (
+        await recordClick(d.tracking, linkId, {
+          ip: d.getIp(c),
+          ua: c.req.header('user-agent'),
+          sig: c.req.query('s'),
+          now: d.now(),
+        })
+      ).url;
     }
     if (url === null) return c.html(NOT_FOUND_HTML, 404);
     // Defence in depth: only http(s) targets that were registered for this link id.

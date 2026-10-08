@@ -1,4 +1,22 @@
-import { isIP } from 'node:net';
+/** 4, 6, or 0 (not an IP). Self-contained so it runs on Node and Cloudflare Workers alike. */
+export function isIP(ip: string): 0 | 4 | 6 {
+  if (/^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/.test(ip))
+    return 4;
+  if (!ip.includes(':') || !/^[0-9a-fA-F:.]+$/.test(ip)) return 0;
+  const doubleColons = ip.split('::').length - 1;
+  if (doubleColons > 1) return 0;
+  const v4 = /(\d+\.\d+\.\d+\.\d+)$/.exec(ip);
+  if (v4 && isIP(v4[1] ?? '') !== 4) return 0;
+  // Count hex groups (an embedded IPv4 tail stands in for two groups).
+  const nonEmpty = ip
+    .replace(/(\d+\.\d+\.\d+\.\d+)$/, '0:0')
+    .split(':')
+    .filter(Boolean);
+  if (nonEmpty.some((g) => g.length > 4)) return 0;
+  if (doubleColons === 0 && nonEmpty.length !== 8) return 0;
+  if (doubleColons === 1 && nonEmpty.length > 7) return 0;
+  return 6;
+}
 
 interface Cidr {
   version: 4 | 6;

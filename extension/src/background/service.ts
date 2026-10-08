@@ -482,6 +482,21 @@ export class PostmarkService {
         return { ok: true };
       },
 
+      GET_MESSAGE_EVENTS: async ({ messageId }, ctx) => {
+        const [message, { events }] = await Promise.all([
+          this.api.getMessage(messageId),
+          this.api.messageEvents(messageId),
+        ]);
+        if (!ctx.fromExtensionPage) {
+          // Gmail tabs only see their own account's (or alias's) emails.
+          const scope = await this.requireScope(ctx);
+          if (!PostmarkService.scopeAccounts(scope).includes(message.senderAccount)) {
+            throw new HandlerError('NOT_FOUND', 'Message not found');
+          }
+        }
+        return { message, events };
+      },
+
       REPORT_REPLY: async ({ messageId }) => {
         await this.api.bindMessage(messageId, { repliedAt: new Date().toISOString() });
         return { ok: true };

@@ -11,3 +11,11 @@
 | R1 Correctness review | ✅ done | 7 findings fixed (2 high: bus privilege, pixel rate-limit keying). Race tests added. Self-open suppression + MPP verified end-to-end with the simulator. See `REVIEW-1-correctness.md`. |
 | R2 Security review | ✅ done | 1 high (InboxSDK telemetry blocked), 3 medium (URL validation in compose, X-Forwarded-For spoofing, chunked body limit), 2 low fixed; 5 low accepted and documented. Adapter break tests added. See `REVIEW-2-security.md`. |
 | R3 Polish & final | ✅ done | Copy, layout, a11y and dead-code pass; bundle sizes recorded; fresh-clone test passed (install → verify → server → seed → simulate → extension in Chrome shows opens). Tagged v0.1.0. See `REVIEW-3-final.md`. |
+
+## Post-v0.1.0
+
+| Change | Status | Notes |
+|---|---|---|
+| Fixes from live testing | ✅ | Telemetry guard answers locally; content scripts left behind by an extension reload stay quiet; server reads `.env`; separate public tracking host supported. |
+| Cloudflare Workers + D1 deployment | ✅ | Async DB layer; Worker entry and cron; `npm run deploy:cloudflare`; verified locally in Wrangler's workerd runtime (seed, simulate, self-view suppression, event polling). Real deploy needs the owner's Cloudflare login. |
+| Full activity history | ✅ | Popup detail view and Gmail strip "Show full activity"; rendered and checked in headless Chrome. |

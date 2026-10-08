@@ -242,3 +242,63 @@ input[type='date'] {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+.linkBtn {
+  all: unset;
+  cursor: pointer;
+  color: var(--pm-accent);
+  text-decoration: underline;
+  font-size: 12px;
+}
+.linkBtn:focus-visible {
+  outline: 2px solid var(--pm-focus);
+  outline-offset: 2px;
+}
+.activity {
+  display: grid;
+  gap: 4px;
+  margin-top: 4px;
+}
+.attrib {
+  margin: 0;
+  font-size: 12px;
+  color: var(--pm-muted);
+}
+.emptyActivity {
+  margin: 0;
+  color: var(--pm-muted);
+}
+ol.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.tlItem {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.tlIgnored {
+  opacity: 0.65;
+}
+.tlDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.tlText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tlTime {
+  color: var(--pm-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}

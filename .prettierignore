@@ -5,3 +5,6 @@ package-lock.json
 CLAUDE.md
 *.md
 extension/public/pageWorld.js
+.wrangler
+**/.wrangler
+server/wrangler.deploy.toml

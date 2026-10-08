@@ -11,7 +11,7 @@ import type {
   UaClass,
 } from '@postmark/shared';
 import { COUNTED_CLICK_CLASSES, COUNTED_OPEN_CLASSES } from '@postmark/shared';
-import type { DB } from './db';
+import { stmt, type SqlDb, type SqlValue, type Stmt } from './sql';
 
 // ---------- row types ----------
 
@@ -89,127 +89,159 @@ function escapeLike(s: string): string {
   return s.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
-/** All SQL lives here. Every user-scoped read takes `userId` so cross-user leaks are impossible by construction. */
+/**
+ * All SQL lives here. Every user-scoped read takes `userId` so cross-user leaks are impossible by
+ * construction. Async so the same code runs on better-sqlite3 (Node) and Cloudflare D1. Multi-step
+ * writes use `batch` (atomic on both); there are no interactive transactions (D1 has none).
+ */
 export class Repo {
-  constructor(private readonly db: DB) {}
-
-  tx<T>(fn: () => T): T {
-    return this.db.transaction(fn)();
-  }
+  constructor(private readonly db: SqlDb) {}
 
   // ---------- users ----------
 
-  createUser(u: Omit<UserRow, 'settings_json'>): void {
-    this.db
-      .prepare('INSERT INTO users(id, email, token_hash, created_at) VALUES (?, ?, ?, ?)')
-      .run(u.id, u.email, u.token_hash, u.created_at);
+  async createUser(u: Omit<UserRow, 'settings_json'>): Promise<void> {
+    await this.db.run(
+      'INSERT INTO users(id, email, token_hash, created_at) VALUES (?, ?, ?, ?)',
+      u.id,
+      u.email,
+      u.token_hash,
+      u.created_at,
+    );
   }
 
-  findUserByEmail(email: string): UserRow | undefined {
-    return this.db.prepare('SELECT * FROM users WHERE email = ?').get(email) as UserRow | undefined;
+  findUserByEmail(email: string): Promise<UserRow | undefined> {
+    return this.db.get<UserRow>('SELECT * FROM users WHERE email = ?', email);
   }
 
-  findUserByTokenHash(hash: string): UserRow | undefined {
-    return this.db.prepare('SELECT * FROM users WHERE token_hash = ?').get(hash) as
-      | UserRow
-      | undefined;
+  findUserByTokenHash(hash: string): Promise<UserRow | undefined> {
+    return this.db.get<UserRow>('SELECT * FROM users WHERE token_hash = ?', hash);
   }
 
-  updateUserToken(userId: string, tokenHash: string): void {
-    this.db.prepare('UPDATE users SET token_hash = ? WHERE id = ?').run(tokenHash, userId);
+  async updateUserToken(userId: string, tokenHash: string): Promise<void> {
+    await this.db.run('UPDATE users SET token_hash = ? WHERE id = ?', tokenHash, userId);
   }
 
-  deleteUser(userId: string): void {
-    this.db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+  async deleteUser(userId: string): Promise<void> {
+    await this.db.run('DELETE FROM users WHERE id = ?', userId);
   }
 
-  getUserSettings(userId: string): UserSettingsJson {
-    const row = this.db.prepare('SELECT settings_json FROM users WHERE id = ?').get(userId) as
-      | { settings_json: string }
-      | undefined;
+  async getUserSettings(userId: string): Promise<UserSettingsJson> {
+    const row = await this.db.get<{ settings_json: string }>(
+      'SELECT settings_json FROM users WHERE id = ?',
+      userId,
+    );
     return row ? parseJson<UserSettingsJson>(row.settings_json, {}) : {};
   }
 
-  setUserSettings(userId: string, settings: UserSettingsJson): void {
-    this.db
-      .prepare('UPDATE users SET settings_json = ? WHERE id = ?')
-      .run(JSON.stringify(settings), userId);
+  async setUserSettings(userId: string, settings: UserSettingsJson): Promise<void> {
+    await this.db.run(
+      'UPDATE users SET settings_json = ? WHERE id = ?',
+      JSON.stringify(settings),
+      userId,
+    );
   }
 
   // ---------- messages & links ----------
 
-  insertMessage(m: MessageRow): void {
-    this.db
-      .prepare(
-        `INSERT INTO messages(id, user_id, sender_account, gmail_thread_id, gmail_message_id, subject,
-           recipients_json, sent_at, tracking_enabled, pixel_id, client_request_id, replied_at, created_at)
-         VALUES (@id, @user_id, @sender_account, @gmail_thread_id, @gmail_message_id, @subject,
-           @recipients_json, @sent_at, @tracking_enabled, @pixel_id, @client_request_id, @replied_at, @created_at)`,
-      )
-      .run(m);
+  private static insertMessageStmt(m: MessageRow): Stmt {
+    return stmt(
+      `INSERT INTO messages(id, user_id, sender_account, gmail_thread_id, gmail_message_id, subject,
+         recipients_json, sent_at, tracking_enabled, pixel_id, client_request_id, replied_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      m.id,
+      m.user_id,
+      m.sender_account,
+      m.gmail_thread_id,
+      m.gmail_message_id,
+      m.subject,
+      m.recipients_json,
+      m.sent_at,
+      m.tracking_enabled,
+      m.pixel_id,
+      m.client_request_id,
+      m.replied_at,
+      m.created_at,
+    );
   }
 
-  insertLink(l: LinkRow): void {
-    this.db
-      .prepare('INSERT INTO links(id, message_id, original_url, position) VALUES (?, ?, ?, ?)')
-      .run(l.id, l.message_id, l.original_url, l.position);
+  private static insertLinkStmt(l: LinkRow): Stmt {
+    return stmt(
+      'INSERT INTO links(id, message_id, original_url, position) VALUES (?, ?, ?, ?)',
+      l.id,
+      l.message_id,
+      l.original_url,
+      l.position,
+    );
   }
 
-  linksForMessage(messageId: string): LinkRow[] {
-    return this.db
-      .prepare('SELECT * FROM links WHERE message_id = ? ORDER BY position')
-      .all(messageId) as LinkRow[];
+  /** Insert a message and its links atomically. */
+  async insertMessageWithLinks(m: MessageRow, links: LinkRow[]): Promise<void> {
+    await this.db.batch([Repo.insertMessageStmt(m), ...links.map(Repo.insertLinkStmt)]);
   }
 
-  findMessageByClientRequest(userId: string, clientRequestId: string): MessageRow | undefined {
-    return this.db
-      .prepare('SELECT * FROM messages WHERE user_id = ? AND client_request_id = ?')
-      .get(userId, clientRequestId) as MessageRow | undefined;
+  async insertLinks(links: LinkRow[]): Promise<void> {
+    await this.db.batch(links.map(Repo.insertLinkStmt));
   }
 
-  getMessage(userId: string, id: string): MessageRow | undefined {
-    return this.db
-      .prepare('SELECT * FROM messages WHERE id = ? AND user_id = ?')
-      .get(id, userId) as MessageRow | undefined;
+  linksForMessage(messageId: string): Promise<LinkRow[]> {
+    return this.db.all<LinkRow>(
+      'SELECT * FROM links WHERE message_id = ? ORDER BY position',
+      messageId,
+    );
   }
 
-  getMessageByPixel(pixelId: string): MessageRow | undefined {
-    return this.db.prepare('SELECT * FROM messages WHERE pixel_id = ?').get(pixelId) as
-      | MessageRow
-      | undefined;
+  findMessageByClientRequest(
+    userId: string,
+    clientRequestId: string,
+  ): Promise<MessageRow | undefined> {
+    return this.db.get<MessageRow>(
+      'SELECT * FROM messages WHERE user_id = ? AND client_request_id = ?',
+      userId,
+      clientRequestId,
+    );
   }
 
-  getLinkWithMessage(linkId: string): { link: LinkRow; message: MessageRow } | undefined {
-    const link = this.db.prepare('SELECT * FROM links WHERE id = ?').get(linkId) as
-      | LinkRow
-      | undefined;
+  getMessage(userId: string, id: string): Promise<MessageRow | undefined> {
+    return this.db.get<MessageRow>(
+      'SELECT * FROM messages WHERE id = ? AND user_id = ?',
+      id,
+      userId,
+    );
+  }
+
+  getMessageByPixel(pixelId: string): Promise<MessageRow | undefined> {
+    return this.db.get<MessageRow>('SELECT * FROM messages WHERE pixel_id = ?', pixelId);
+  }
+
+  async getLinkWithMessage(
+    linkId: string,
+  ): Promise<{ link: LinkRow; message: MessageRow } | undefined> {
+    const link = await this.db.get<LinkRow>('SELECT * FROM links WHERE id = ?', linkId);
     if (!link) return undefined;
-    const message = this.db.prepare('SELECT * FROM messages WHERE id = ?').get(link.message_id) as
-      | MessageRow
-      | undefined;
+    const message = await this.db.get<MessageRow>(
+      'SELECT * FROM messages WHERE id = ?',
+      link.message_id,
+    );
     return message ? { link, message } : undefined;
   }
 
-  bindMessage(
+  async bindMessage(
     userId: string,
     id: string,
     patch: { gmailThreadId?: string; gmailMessageId?: string; repliedAt?: number },
-  ): boolean {
-    const r = this.db
-      .prepare(
-        `UPDATE messages SET
-           gmail_thread_id = COALESCE(@t, gmail_thread_id),
-           gmail_message_id = COALESCE(@m, gmail_message_id),
-           replied_at = COALESCE(replied_at, @r)
-         WHERE id = @id AND user_id = @u`,
-      )
-      .run({
-        t: patch.gmailThreadId ?? null,
-        m: patch.gmailMessageId ?? null,
-        r: patch.repliedAt ?? null,
-        id,
-        u: userId,
-      });
+  ): Promise<boolean> {
+    const r = await this.db.run(
+      `UPDATE messages SET
+         gmail_thread_id = COALESCE(?, gmail_thread_id),
+         gmail_message_id = COALESCE(?, gmail_message_id),
+         replied_at = COALESCE(replied_at, ?)
+       WHERE id = ? AND user_id = ?`,
+      patch.gmailThreadId ?? null,
+      patch.gmailMessageId ?? null,
+      patch.repliedAt ?? null,
+      id,
+      userId,
+    );
     return r.changes > 0;
   }
 
@@ -223,40 +255,41 @@ export class Repo {
       q?: string;
       limit: number;
     },
-  ): MessageRow[] {
-    const where = ['user_id = @u'];
-    const params: Record<string, unknown> = { u: userId, limit: f.limit };
+  ): Promise<MessageRow[]> {
+    const where = ['user_id = ?'];
+    const params: SqlValue[] = [userId];
     if (f.account) {
-      where.push('sender_account = @account');
-      params.account = f.account;
+      where.push('sender_account = ?');
+      params.push(f.account);
     }
     if (f.accounts && f.accounts.length > 0) {
-      where.push('sender_account IN (SELECT value FROM json_each(@accounts))');
-      params.accounts = JSON.stringify(f.accounts);
+      where.push('sender_account IN (SELECT value FROM json_each(?))');
+      params.push(JSON.stringify(f.accounts));
     }
     if (f.since !== undefined) {
-      where.push('sent_at >= @since');
-      params.since = f.since;
+      where.push('sent_at >= ?');
+      params.push(f.since);
     }
     if (f.threadIds && f.threadIds.length > 0) {
-      where.push('gmail_thread_id IN (SELECT value FROM json_each(@threadIds))');
-      params.threadIds = JSON.stringify(f.threadIds);
+      where.push('gmail_thread_id IN (SELECT value FROM json_each(?))');
+      params.push(JSON.stringify(f.threadIds));
     }
     if (f.q) {
       where.push(
-        "(subject LIKE @q ESCAPE '\\' COLLATE NOCASE OR recipients_json LIKE @q ESCAPE '\\' COLLATE NOCASE)",
+        "(subject LIKE ? ESCAPE '\\' COLLATE NOCASE OR recipients_json LIKE ? ESCAPE '\\' COLLATE NOCASE)",
       );
-      params.q = `%${escapeLike(f.q)}%`;
+      const like = `%${escapeLike(f.q)}%`;
+      params.push(like, like);
     }
-    return this.db
-      .prepare(
-        `SELECT * FROM messages WHERE ${where.join(' AND ')} ORDER BY sent_at DESC, id DESC LIMIT @limit`,
-      )
-      .all(params) as MessageRow[];
+    params.push(f.limit);
+    return this.db.all<MessageRow>(
+      `SELECT * FROM messages WHERE ${where.join(' AND ')} ORDER BY sent_at DESC, id DESC LIMIT ?`,
+      ...params,
+    );
   }
 
   /** Aggregate open/click stats for message rows and build API summaries. */
-  summarize(rows: MessageRow[]): MessageSummary[] {
+  async summarize(rows: MessageRow[]): Promise<MessageSummary[]> {
     if (rows.length === 0) return [];
     const ids = JSON.stringify(rows.map((r) => r.id));
     type Agg = {
@@ -269,8 +302,10 @@ export class Repo {
       clicks: number;
       last_click: number | null;
     };
-    const aggs = this.db
-      .prepare(
+    type Last = { message_id: string; type: EventType; occurred_at: number; ua_class: UaClass };
+    type LinkAgg = LinkRow & { clicks: number; last_click: number | null };
+    const [aggs, lasts, links] = await Promise.all([
+      this.db.all<Agg>(
         `SELECT message_id,
            SUM(CASE WHEN type='open' AND ua_class IN (${OPEN_IN}) THEN 1 ELSE 0 END) AS opens,
            COUNT(DISTINCT CASE WHEN type='open' AND ua_class IN (${OPEN_IN}) THEN ip_hash END) AS unique_opens,
@@ -281,34 +316,29 @@ export class Repo {
            MAX(CASE WHEN type='click' AND ua_class IN (${CLICK_IN}) THEN occurred_at END) AS last_click
          FROM events WHERE message_id IN (SELECT value FROM json_each(?))
          GROUP BY message_id`,
-      )
-      .all(ids) as Agg[];
-    const aggBy = new Map(aggs.map((a) => [a.message_id, a]));
-
-    type Last = { message_id: string; type: EventType; occurred_at: number; ua_class: UaClass };
-    const lasts = this.db
-      .prepare(
+        ids,
+      ),
+      this.db.all<Last>(
         `SELECT message_id, type, occurred_at, ua_class FROM (
            SELECT message_id, type, occurred_at, ua_class,
              ROW_NUMBER() OVER (PARTITION BY message_id ORDER BY occurred_at DESC, id DESC) AS rn
            FROM events
            WHERE message_id IN (SELECT value FROM json_each(?)) AND ua_class NOT IN ('bot','sender')
          ) WHERE rn = 1`,
-      )
-      .all(ids) as Last[];
-    const lastBy = new Map(lasts.map((l) => [l.message_id, l]));
-
-    type LinkAgg = LinkRow & { clicks: number; last_click: number | null };
-    const links = this.db
-      .prepare(
+        ids,
+      ),
+      this.db.all<LinkAgg>(
         `SELECT l.id, l.message_id, l.original_url, l.position,
            COUNT(e.id) AS clicks, MAX(e.occurred_at) AS last_click
          FROM links l
          LEFT JOIN events e ON e.link_id = l.id AND e.type = 'click' AND e.ua_class IN (${CLICK_IN})
          WHERE l.message_id IN (SELECT value FROM json_each(?))
          GROUP BY l.id ORDER BY l.position`,
-      )
-      .all(ids) as LinkAgg[];
+        ids,
+      ),
+    ]);
+    const aggBy = new Map(aggs.map((a) => [a.message_id, a]));
+    const lastBy = new Map(lasts.map((l) => [l.message_id, l]));
     const linksBy = new Map<string, LinkAgg[]>();
     for (const l of links) {
       const arr = linksBy.get(l.message_id) ?? [];
@@ -359,119 +389,157 @@ export class Repo {
 
   // ---------- events ----------
 
-  insertEvent(e: Omit<EventRow, 'id'>): number {
-    const r = this.db
-      .prepare(
-        `INSERT INTO events(message_id, link_id, type, occurred_at, ip_hash, ua_class, is_first)
-         VALUES (@message_id, @link_id, @type, @occurred_at, @ip_hash, @ua_class, @is_first)`,
-      )
-      .run(e);
-    return Number(r.lastInsertRowid);
-  }
-
-  hasRecentDuplicate(e: {
+  async hasRecentDuplicate(e: {
     message_id: string;
     link_id: string | null;
     type: EventType;
     ip_hash: string;
     ua_class: UaClass;
     after: number;
-  }): boolean {
-    const row = this.db
-      .prepare(
-        `SELECT 1 FROM events WHERE message_id = @message_id AND type = @type
-           AND link_id IS @link_id AND ip_hash = @ip_hash AND ua_class = @ua_class
-           AND occurred_at >= @after LIMIT 1`,
-      )
-      .get(e);
+  }): Promise<boolean> {
+    const row = await this.db.get(
+      `SELECT 1 AS x FROM events WHERE message_id = ? AND type = ?
+         AND link_id IS ? AND ip_hash = ? AND ua_class = ?
+         AND occurred_at >= ? LIMIT 1`,
+      e.message_id,
+      e.type,
+      e.link_id,
+      e.ip_hash,
+      e.ua_class,
+      e.after,
+    );
     return row !== undefined;
   }
 
-  /** Set is_first=1 on the earliest counted event (per message for opens, per link for clicks). */
-  recomputeFirst(messageId: string, type: EventType, linkId: string | null): void {
+  /** Statements that set is_first=1 on the earliest counted event (per message for opens, per link for clicks). */
+  private static recomputeFirstStmts(
+    messageId: string,
+    type: EventType,
+    linkId: string | null,
+  ): Stmt[] {
     const counted = type === 'open' ? OPEN_IN : CLICK_IN;
-    const linkClause = type === 'click' ? 'AND link_id IS @link' : '';
-    const params = { m: messageId, t: type, link: linkId };
-    this.db
-      .prepare(`UPDATE events SET is_first = 0 WHERE message_id = @m AND type = @t ${linkClause}`)
-      .run(params);
-    this.db
-      .prepare(
+    const linkClause = type === 'click' ? 'AND link_id IS ?' : '';
+    const base: SqlValue[] = type === 'click' ? [messageId, type, linkId] : [messageId, type];
+    return [
+      stmt(
+        `UPDATE events SET is_first = 0 WHERE message_id = ? AND type = ? ${linkClause}`,
+        ...base,
+      ),
+      stmt(
         `UPDATE events SET is_first = 1 WHERE id = (
-           SELECT id FROM events WHERE message_id = @m AND type = @t ${linkClause}
+           SELECT id FROM events WHERE message_id = ? AND type = ? ${linkClause}
              AND ua_class IN (${counted})
            ORDER BY occurred_at ASC, id ASC LIMIT 1)`,
-      )
-      .run(params);
+        ...base,
+      ),
+    ];
   }
 
-  insertSelfView(messageId: string, account: string, at: number): void {
-    this.db
-      .prepare('INSERT INTO self_views(message_id, account, viewed_at) VALUES (?, ?, ?)')
-      .run(messageId, account, at);
+  /** Insert an event and recompute first-event flags atomically. Returns the new event id. */
+  async insertEvent(e: Omit<EventRow, 'id'>): Promise<number> {
+    const [ins] = await this.db.batch([
+      stmt(
+        `INSERT INTO events(message_id, link_id, type, occurred_at, ip_hash, ua_class, is_first)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        e.message_id,
+        e.link_id,
+        e.type,
+        e.occurred_at,
+        e.ip_hash,
+        e.ua_class,
+        e.is_first,
+      ),
+      ...Repo.recomputeFirstStmts(e.message_id, e.type, e.link_id),
+    ]);
+    return ins?.lastRowId ?? 0;
   }
 
-  hasSelfViewNear(messageId: string, account: string, at: number, windowMs: number): boolean {
-    return (
-      this.db
-        .prepare(
-          `SELECT 1 FROM self_views WHERE message_id = ? AND account = ?
-             AND viewed_at BETWEEN ? AND ? LIMIT 1`,
-        )
-        .get(messageId, account, at - windowMs, at + windowMs) !== undefined
+  async hasSelfViewNear(
+    messageId: string,
+    account: string,
+    at: number,
+    windowMs: number,
+  ): Promise<boolean> {
+    const row = await this.db.get(
+      `SELECT 1 AS x FROM self_views WHERE message_id = ? AND account = ?
+         AND viewed_at BETWEEN ? AND ? LIMIT 1`,
+      messageId,
+      account,
+      at - windowMs,
+      at + windowMs,
     );
+    return row !== undefined;
   }
 
-  /** Reclassify Gmail-proxy opens near a self-view as sender opens. Returns rows changed. */
-  reclassifyProxyOpensAsSender(messageId: string, at: number, windowMs: number): number {
-    return this.db
-      .prepare(
+  /**
+   * Record a self-view and reclassify Gmail-proxy opens within ±window as the sender's own,
+   * atomically. Returns how many events were reclassified.
+   */
+  async recordSelfView(
+    messageId: string,
+    account: string,
+    at: number,
+    windowMs: number,
+  ): Promise<number> {
+    const [, reclass] = await this.db.batch([
+      stmt(
+        'INSERT INTO self_views(message_id, account, viewed_at) VALUES (?, ?, ?)',
+        messageId,
+        account,
+        at,
+      ),
+      stmt(
         `UPDATE events SET ua_class = 'sender', is_first = 0
          WHERE message_id = ? AND type = 'open' AND ua_class = 'gmail_proxy'
            AND occurred_at BETWEEN ? AND ?`,
-      )
-      .run(messageId, at - windowMs, at + windowMs).changes;
+        messageId,
+        at - windowMs,
+        at + windowMs,
+      ),
+      ...Repo.recomputeFirstStmts(messageId, 'open', null),
+    ]);
+    return reclass?.changes ?? 0;
   }
 
-  eventsForMessage(userId: string, messageId: string): TrackingEvent[] {
-    return this.eventQuery('m.user_id = @u AND e.message_id = @mid ORDER BY e.id ASC', {
-      u: userId,
-      mid: messageId,
-    });
+  eventsForMessage(userId: string, messageId: string): Promise<TrackingEvent[]> {
+    return this.eventQuery('m.user_id = ? AND e.message_id = ? ORDER BY e.id ASC', [
+      userId,
+      messageId,
+    ]);
   }
 
   /** Events for polling: id > cursor, optionally filtered by account, ordered by id. */
   eventsAfter(
     userId: string,
     f: { cursor?: number; since?: number; account?: string; limit: number },
-  ): TrackingEvent[] {
-    const where = ['m.user_id = @u'];
-    const params: Record<string, unknown> = { u: userId, limit: f.limit };
+  ): Promise<TrackingEvent[]> {
+    const where = ['m.user_id = ?'];
+    const params: SqlValue[] = [userId];
     if (f.cursor !== undefined) {
-      where.push('e.id > @cursor');
-      params.cursor = f.cursor;
+      where.push('e.id > ?');
+      params.push(f.cursor);
     }
     if (f.since !== undefined) {
-      where.push('e.occurred_at >= @since');
-      params.since = f.since;
+      where.push('e.occurred_at >= ?');
+      params.push(f.since);
     }
     if (f.account) {
-      where.push('m.sender_account = @account');
-      params.account = f.account;
+      where.push('m.sender_account = ?');
+      params.push(f.account);
     }
-    return this.eventQuery(`${where.join(' AND ')} ORDER BY e.id ASC LIMIT @limit`, params);
+    params.push(f.limit);
+    return this.eventQuery(`${where.join(' AND ')} ORDER BY e.id ASC LIMIT ?`, params);
   }
 
-  maxEventIdForUser(userId: string): number {
-    const row = this.db
-      .prepare(
-        'SELECT MAX(e.id) AS id FROM events e JOIN messages m ON m.id = e.message_id WHERE m.user_id = ?',
-      )
-      .get(userId) as { id: number | null };
-    return row.id ?? 0;
+  async maxEventIdForUser(userId: string): Promise<number> {
+    const row = await this.db.get<{ id: number | null }>(
+      'SELECT MAX(e.id) AS id FROM events e JOIN messages m ON m.id = e.message_id WHERE m.user_id = ?',
+      userId,
+    );
+    return row?.id ?? 0;
   }
 
-  private eventQuery(whereAndOrder: string, params: Record<string, unknown>): TrackingEvent[] {
+  private async eventQuery(whereAndOrder: string, params: SqlValue[]): Promise<TrackingEvent[]> {
     type Row = EventRow & {
       sender_account: string;
       subject: string;
@@ -479,15 +547,14 @@ export class Repo {
       gmail_thread_id: string | null;
       original_url: string | null;
     };
-    const rows = this.db
-      .prepare(
-        `SELECT e.*, m.sender_account, m.subject, m.recipients_json, m.gmail_thread_id, l.original_url
-         FROM events e
-         JOIN messages m ON m.id = e.message_id
-         LEFT JOIN links l ON l.id = e.link_id
-         WHERE ${whereAndOrder}`,
-      )
-      .all(params) as Row[];
+    const rows = await this.db.all<Row>(
+      `SELECT e.*, m.sender_account, m.subject, m.recipients_json, m.gmail_thread_id, l.original_url
+       FROM events e
+       JOIN messages m ON m.id = e.message_id
+       LEFT JOIN links l ON l.id = e.link_id
+       WHERE ${whereAndOrder}`,
+      ...params,
+    );
     return rows.map((r) => ({
       id: r.id,
       messageId: r.message_id,
@@ -511,29 +578,37 @@ export class Repo {
    * With `retentionDays > 0`, also delete messages (and, by cascade, their links, events and
    * reminders) older than that.
    */
-  purge(now: number, retentionDays: number): { selfViews: number; messages: number } {
-    const selfViews = this.db
-      .prepare('DELETE FROM self_views WHERE viewed_at < ?')
-      .run(now - 86_400_000).changes;
+  async purge(
+    now: number,
+    retentionDays: number,
+  ): Promise<{ selfViews: number; messages: number }> {
+    const selfViews = (
+      await this.db.run('DELETE FROM self_views WHERE viewed_at < ?', now - 86_400_000)
+    ).changes;
     const messages =
       retentionDays > 0
-        ? this.db
-            .prepare('DELETE FROM messages WHERE sent_at < ?')
-            .run(now - retentionDays * 86_400_000).changes
+        ? (
+            await this.db.run(
+              'DELETE FROM messages WHERE sent_at < ?',
+              now - retentionDays * 86_400_000,
+            )
+          ).changes
         : 0;
     return { selfViews, messages };
   }
 
   // ---------- accounts ----------
 
-  accounts(userId: string): AccountInfo[] {
-    const rows = this.db
-      .prepare(
+  async accounts(userId: string): Promise<AccountInfo[]> {
+    const [rows, userSettings] = await Promise.all([
+      this.db.all<{ account: string; c: number; last: number }>(
         `SELECT sender_account AS account, COUNT(*) AS c, MAX(sent_at) AS last
          FROM messages WHERE user_id = ? GROUP BY sender_account`,
-      )
-      .all(userId) as { account: string; c: number; last: number }[];
-    const settings = this.getUserSettings(userId).accounts ?? {};
+        userId,
+      ),
+      this.getUserSettings(userId),
+    ]);
+    const settings = userSettings.accounts ?? {};
     const byAccount = new Map<string, AccountInfo>();
     for (const r of rows) {
       byAccount.set(r.account, {
@@ -553,32 +628,36 @@ export class Repo {
 
   // ---------- reminders ----------
 
-  insertReminder(r: ReminderRow): void {
-    this.db
-      .prepare(
-        `INSERT INTO reminders(id, message_id, remind_at, condition, status, created_at)
-         VALUES (@id, @message_id, @remind_at, @condition, @status, @created_at)`,
-      )
-      .run(r);
+  async insertReminder(r: ReminderRow): Promise<void> {
+    await this.db.run(
+      `INSERT INTO reminders(id, message_id, remind_at, condition, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      r.id,
+      r.message_id,
+      r.remind_at,
+      r.condition,
+      r.status,
+      r.created_at,
+    );
   }
 
-  listReminders(
+  async listReminders(
     userId: string,
     f: { status?: ReminderStatus; account?: string; id?: string },
-  ): Reminder[] {
-    const where = ['m.user_id = @u'];
-    const params: Record<string, unknown> = { u: userId };
+  ): Promise<Reminder[]> {
+    const where = ['m.user_id = ?'];
+    const params: SqlValue[] = [userId];
     if (f.status) {
-      where.push('r.status = @status');
-      params.status = f.status;
+      where.push('r.status = ?');
+      params.push(f.status);
     }
     if (f.account) {
-      where.push('m.sender_account = @account');
-      params.account = f.account;
+      where.push('m.sender_account = ?');
+      params.push(f.account);
     }
     if (f.id) {
-      where.push('r.id = @id');
-      params.id = f.id;
+      where.push('r.id = ?');
+      params.push(f.id);
     }
     type Row = ReminderRow & {
       subject: string;
@@ -586,13 +665,12 @@ export class Repo {
       sender_account: string;
       gmail_thread_id: string | null;
     };
-    const rows = this.db
-      .prepare(
-        `SELECT r.*, m.subject, m.recipients_json, m.sender_account, m.gmail_thread_id
-         FROM reminders r JOIN messages m ON m.id = r.message_id
-         WHERE ${where.join(' AND ')} ORDER BY r.remind_at ASC`,
-      )
-      .all(params) as Row[];
+    const rows = await this.db.all<Row>(
+      `SELECT r.*, m.subject, m.recipients_json, m.sender_account, m.gmail_thread_id
+       FROM reminders r JOIN messages m ON m.id = r.message_id
+       WHERE ${where.join(' AND ')} ORDER BY r.remind_at ASC`,
+      ...params,
+    );
     return rows.map((r) => ({
       id: r.id,
       messageId: r.message_id,
@@ -607,25 +685,29 @@ export class Repo {
     }));
   }
 
-  updateReminderStatus(userId: string, id: string, status: ReminderStatus): boolean {
-    return (
-      this.db
-        .prepare(
-          `UPDATE reminders SET status = ? WHERE id = ? AND message_id IN
-             (SELECT id FROM messages WHERE user_id = ?)`,
-        )
-        .run(status, id, userId).changes > 0
+  async updateReminderStatus(userId: string, id: string, status: ReminderStatus): Promise<boolean> {
+    const r = await this.db.run(
+      `UPDATE reminders SET status = ? WHERE id = ? AND message_id IN
+         (SELECT id FROM messages WHERE user_id = ?)`,
+      status,
+      id,
+      userId,
     );
+    return r.changes > 0;
   }
 
-  deleteReminder(userId: string, id: string): boolean {
-    return (
-      this.db
-        .prepare(
-          `DELETE FROM reminders WHERE id = ? AND message_id IN
-             (SELECT id FROM messages WHERE user_id = ?)`,
-        )
-        .run(id, userId).changes > 0
+  async deleteReminder(userId: string, id: string): Promise<boolean> {
+    const r = await this.db.run(
+      `DELETE FROM reminders WHERE id = ? AND message_id IN
+         (SELECT id FROM messages WHERE user_id = ?)`,
+      id,
+      userId,
     );
+    return r.changes > 0;
+  }
+
+  /** Test/debug helper: raw rows of a table. */
+  rawAll<T>(sql: string): Promise<T[]> {
+    return this.db.all<T>(sql);
   }
 }

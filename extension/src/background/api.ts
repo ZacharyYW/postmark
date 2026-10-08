@@ -4,6 +4,7 @@ import {
   CreateMessageRes,
   EventsRes,
   ListMessagesRes,
+  MessageEventsRes,
   MessageSummary,
   MeRes,
   RegisterRes,
@@ -158,6 +159,11 @@ export class ApiClient {
   }
   getMessage(id: string) {
     return this.request(`/v1/messages/${encodeURIComponent(id)}`, { schema: MessageSummary });
+  }
+  messageEvents(id: string) {
+    return this.request(`/v1/messages/${encodeURIComponent(id)}/events`, {
+      schema: MessageEventsRes,
+    });
   }
   selfView(id: string, account: string) {
     return this.request<void>(`/v1/messages/${encodeURIComponent(id)}/self-view`, {

@@ -10,7 +10,7 @@ export function requireAuth(repo: Repo, limiter: TokenBucketLimiter): Middleware
     const m = /^Bearer\s+([A-Za-z0-9_-]{20,200})$/.exec(header);
     if (!m?.[1])
       throw new ApiHttpError(401, 'UNAUTHENTICATED', 'Missing or malformed bearer token');
-    const user = repo.findUserByTokenHash(sha256Hex(m[1]));
+    const user = await repo.findUserByTokenHash(sha256Hex(m[1]));
     if (!user) throw new ApiHttpError(401, 'UNAUTHENTICATED', 'Invalid token');
     if (!limiter.take(`u:${user.id}`)) {
       c.header('Retry-After', String(limiter.retryAfter(`u:${user.id}`)));

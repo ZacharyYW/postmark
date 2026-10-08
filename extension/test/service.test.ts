@@ -78,6 +78,20 @@ describe('multi-account separation in Gmail surfaces', () => {
     expect(r).toMatchObject({ ok: false, error: { code: 'NO_ACCOUNT' } });
   });
 
+  it('GET_MESSAGE_EVENTS: full history for the owning tab or the popup, never another account’s tab', async () => {
+    const { h, tabA, tabB, mk } = await twoAccounts();
+    const m = await mk(tabA, 'a@work.com', 'tA');
+    h.clock.now += 60_000;
+    await hitPixel(h, m.pixelUrl);
+    await hitPixel(h, m.pixelUrl, 'curl/8.0');
+    const own = await tabA.send('GET_MESSAGE_EVENTS', { messageId: m.messageId });
+    expect(own.ok && own.data.events.map((e) => e.uaClass)).toEqual(['gmail_proxy', 'bot']);
+    const other = await tabB.send('GET_MESSAGE_EVENTS', { messageId: m.messageId });
+    expect(other).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
+    const popup = await h.busFor().send('GET_MESSAGE_EVENTS', { messageId: m.messageId });
+    expect(popup.ok && popup.data.message.id).toBe(m.messageId);
+  });
+
   it('SELF_VIEW from the sender tab suppresses; from another account’s tab it counts', async () => {
     const { h, tabA, tabB, mk } = await twoAccounts();
     const m = await mk(tabA, 'a@work.com', 'tA', ['b@gmail.com']);

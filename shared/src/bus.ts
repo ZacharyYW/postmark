@@ -5,6 +5,7 @@ import type {
   CreateMessageRes,
   MessageSummary,
   Reminder,
+  TrackingEvent,
 } from './schemas';
 import type { GlobalSettings, ResolvedSettings } from './settings';
 
@@ -35,6 +36,11 @@ export interface BusMap {
   GET_MARKS: { req: { threadIds: string[] }; res: { marks: Record<string, MessageSummary[]> } };
   GET_THREAD_TRACKING: { req: { threadId: string }; res: { messages: MessageSummary[] } };
   SELF_VIEW: { req: { messageId: string }; res: { ok: true } };
+  /** Full activity history of one tracked email (every open/click, including ignored ones). */
+  GET_MESSAGE_EVENTS: {
+    req: { messageId: string };
+    res: { message: MessageSummary; events: TrackingEvent[] };
+  };
   REPORT_REPLY: { req: { messageId: string }; res: { ok: true } };
   GET_SETTINGS: {
     req: { account?: string | null };

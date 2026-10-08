@@ -44,20 +44,20 @@ const { app, repo } = createApp({
 
 const server = serve({ fetch: app.fetch, port: env.PORT, hostname: env.HOST }, (info) => {
   console.log(`Postmark server listening on http://${info.address}:${info.port}`);
-  console.log(`Public base URL: ${env.PUBLIC_BASE_URL}`);
+  console.log(`Public base URL: ${env.PUBLIC_BASE_URL ?? '(origin of each request)'}`);
 });
 
-const housekeeping = () => {
+const housekeeping = async () => {
   try {
-    const r = repo.purge(Date.now(), env.RETENTION_DAYS);
+    const r = await repo.purge(Date.now(), env.RETENTION_DAYS);
     if (r.messages > 0)
       log(`retention: deleted ${r.messages} messages older than ${env.RETENTION_DAYS} days`);
   } catch (err) {
     log(`housekeeping failed: ${(err as Error).message}`);
   }
 };
-housekeeping();
-const housekeepingTimer = setInterval(housekeeping, 6 * 3_600_000);
+void housekeeping();
+const housekeepingTimer = setInterval(() => void housekeeping(), 6 * 3_600_000);
 housekeepingTimer.unref();
 
 const shutdown = () => {

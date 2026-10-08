@@ -9,7 +9,10 @@ const EnvSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(8787),
   HOST: z.string().default('0.0.0.0'),
   /** Public base URL used to build pixel and link URLs (no trailing slash). */
-  PUBLIC_BASE_URL: z.string().url().default('http://localhost:8787'),
+  /** Public base URL for pixel/link URLs. Unset = the origin of the incoming request. */
+  PUBLIC_BASE_URL: z.string().url().optional(),
+  /** Comma-separated emails allowed to register. Empty = open registration. */
+  ALLOWED_EMAILS: z.string().default(''),
   DATABASE_PATH: z.string().default('./data/postmark.db'),
   /** Comma-separated extension ids allowed for CORS (chrome-extension://<id>). Empty = any extension origin (dev only). */
   EXTENSION_IDS: z.string().default(''),
@@ -39,7 +42,7 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
   const parsed = EnvSchema.parse(cleaned);
   return {
     ...parsed,
-    PUBLIC_BASE_URL: parsed.PUBLIC_BASE_URL.replace(/\/+$/, ''),
+    PUBLIC_BASE_URL: parsed.PUBLIC_BASE_URL?.replace(/\/+$/, ''),
     TRUST_PROXY: parsed.TRUST_PROXY ?? false,
     DEV_ALLOW_TOKEN_ROTATION: parsed.DEV_ALLOW_TOKEN_ROTATION ?? false,
   };

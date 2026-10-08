@@ -328,7 +328,10 @@ describe('self-open suppression (per sender account)', () => {
     const m = await createMessage(ctx, token, { senderAccount: 'a@work.com' });
     const { signShort } = await import('../src/lib/crypto');
     const { senderSigValue } = await import('../src/tracking/record');
-    const sig = signShort(ctx.tracking.signSecret, senderSigValue(m.pixelId, 'a@work.com'));
+    const sig = signShort(
+      (await ctx.tracking.secrets()).signSecret,
+      senderSigValue(m.pixelId, 'a@work.com'),
+    );
     ctx.advance(60_000);
     await pixel(ctx, m.pixelId, UA.chrome, `?s=${sig}`);
     ctx.ip.value = '198.51.100.10';
@@ -573,7 +576,7 @@ describe('DELETE /v1/me', () => {
     await pixel(ctx, m.pixelId, UA.gmail);
     expect((await ctx.req('/v1/me', { method: 'DELETE', token })).status).toBe(204);
     expect((await ctx.req('/v1/me', { token })).status).toBe(401);
-    expect(ctx.repo.getMessageByPixel(m.pixelId)).toBeUndefined();
+    expect(await ctx.repo.getMessageByPixel(m.pixelId)).toBeUndefined();
     expect((await ctx.req(`/l/${m.rewrittenLinks[0]!.linkId}`)).status).toBe(404);
   });
 });
@@ -726,9 +729,9 @@ describe('R2 hardening', () => {
     });
     await pixel(ctx, m.pixelId, UA.gmail);
     ctx.advance(2 * 86_400_000);
-    expect(ctx.repo.purge(ctx.clock.now, 0)).toEqual({ selfViews: 1, messages: 0 });
+    expect(await ctx.repo.purge(ctx.clock.now, 0)).toEqual({ selfViews: 1, messages: 0 });
     ctx.advance(30 * 86_400_000);
-    expect(ctx.repo.purge(ctx.clock.now, 30)).toEqual({ selfViews: 0, messages: 1 });
+    expect(await ctx.repo.purge(ctx.clock.now, 30)).toEqual({ selfViews: 0, messages: 1 });
     expect((await ctx.req(`/v1/messages/${m.messageId}`, { token })).status).toBe(404);
   });
 
@@ -739,11 +742,7 @@ describe('R2 hardening', () => {
     ctx.advance(60_000);
     ctx.ip.value = '203.0.113.99';
     await pixel(ctx, m.pixelId, 'Mozilla/5.0 UniqueAgentString/1.2.3');
-    const dump = JSON.stringify(
-      (ctx.repo as unknown as { db: { prepare(s: string): { all(): unknown[] } } }).db
-        .prepare('SELECT * FROM events')
-        .all(),
-    );
+    const dump = JSON.stringify(await ctx.repo.rawAll('SELECT * FROM events'));
     expect(dump).not.toContain('203.0.113.99');
     expect(dump).not.toContain('UniqueAgentString');
   });
@@ -773,5 +772,30 @@ describe('env loading', () => {
     const env = loadEnv({ IP_HASH_SALT: '', EXTENSION_IDS: '', PORT: '9000' });
     expect(env.IP_HASH_SALT).toBeUndefined();
     expect(env.PORT).toBe(9000);
+  });
+});
+
+describe('registration allowlist (ALLOWED_EMAILS)', () => {
+  it('only listed emails may register', async () => {
+    const ctx = makeCtx({ ALLOWED_EMAILS: 'Owner@Example.com' });
+    const bad = await ctx.req('/v1/auth/register', {
+      method: 'POST',
+      json: { email: 'intruder@x.com' },
+    });
+    expect(bad.status).toBe(403);
+    const ok = await ctx.req('/v1/auth/register', {
+      method: 'POST',
+      json: { email: 'owner@example.com' },
+    });
+    expect(ok.status).toBe(201);
+  });
+});
+
+describe('public base URL', () => {
+  it('defaults to the request origin when PUBLIC_BASE_URL is unset', async () => {
+    const ctx = makeCtx({ PUBLIC_BASE_URL: '' });
+    const token = await ctx.register('u@x.com');
+    const m = await createMessage(ctx, token);
+    expect(m.pixelUrl.startsWith('http://pm.test/p/')).toBe(true);
   });
 });

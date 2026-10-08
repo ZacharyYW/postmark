@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/pre
 import type { BusClient } from '../src/bus/client';
 import { BusContext, PrefsContext } from '../src/ui/busContext';
 import { ALL, Popup } from '../src/ui/popup/Popup';
+import type { TrackingEvent } from '@postmark/shared';
 import { fakeBus, memoryPrefs } from './fakeBus';
 import { opened, summary } from './fixtures';
 
@@ -111,14 +112,47 @@ describe('popup states', () => {
 });
 
 describe('popup recent list', () => {
-  it('lists messages with status, account chips under "All accounts", and opens threads', async () => {
-    const m1 = opened({ subject: 'Proposal', senderAccount: 'a@work.com', gmailThreadId: 'T1' });
+  it('lists messages; clicking one shows its full activity; Open in Gmail and Back work', async () => {
+    const m1 = opened({
+      id: 'm1',
+      subject: 'Proposal',
+      senderAccount: 'a@work.com',
+      gmailThreadId: 'T1',
+    });
     const m2 = summary({ subject: 'Dinner', senderAccount: 'b@gmail.com', gmailThreadId: null });
+    const ev = (o: Partial<TrackingEvent>): TrackingEvent => ({
+      id: 1,
+      messageId: 'm1',
+      linkId: null,
+      linkUrl: null,
+      type: 'open',
+      occurredAt: new Date(Date.now() - 3_600_000).toISOString(),
+      uaClass: 'gmail_proxy',
+      isFirst: true,
+      senderAccount: 'a@work.com',
+      subject: 'Proposal',
+      recipients: ['you@example.com'],
+      gmailThreadId: 'T1',
+      ...o,
+    });
     const { client, calls } = fakeBus({
       GET_AUTH_STATE: () => loggedIn,
       LIST_ACCOUNTS: () => ({ accounts: ACCOUNTS }),
       GET_ACTIVE_TAB_ACCOUNT: () => ({ account: null }),
       LIST_MESSAGES: () => ({ messages: [m1, m2] }),
+      GET_MESSAGE_EVENTS: () => ({
+        message: m1,
+        events: [
+          ev({ id: 1 }),
+          ev({
+            id: 2,
+            type: 'click',
+            linkUrl: 'https://example.com/doc',
+            occurredAt: new Date().toISOString(),
+          }),
+          ev({ id: 3, uaClass: 'bot' }),
+        ],
+      }),
       OPEN_THREAD: () => ({ ok: true as const }),
     });
     mount(client);
@@ -128,13 +162,50 @@ describe('popup recent list', () => {
     expect(within(rows[0]!).getByText('Opened 3×')).toBeTruthy();
     expect(within(rows[0]!).getByText('via a@work.com')).toBeTruthy(); // chip
     expect(within(rows[1]!).getByText('Not opened yet')).toBeTruthy();
-    expect(rows[1]!.getAttribute('aria-disabled')).toBe('true');
+
     fireEvent.click(rows[0]!);
+    const timeline = await screen.findByRole('list', { name: /Activity history/ });
+    const items = within(timeline).getAllByRole('listitem');
+    expect(items.map((i) => i.textContent)).toEqual([
+      expect.stringContaining('Clicked example.com'),
+      expect.stringContaining('Opened (in Gmail)'),
+    ]);
+    expect(screen.getByText(/Opens are most likely theirs/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Show 1 ignored event' }));
+    expect(within(timeline).getAllByRole('listitem')).toHaveLength(3);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open in Gmail' }));
     await waitFor(() => expect(calls.some((c) => c.type === 'OPEN_THREAD')).toBe(true));
     expect(calls.find((c) => c.type === 'OPEN_THREAD')!.payload).toEqual({
       gmailThreadId: 'T1',
       account: 'a@work.com',
     });
+    fireEvent.click(screen.getByRole('button', { name: '← Back' }));
+    await screen.findByRole('list', { name: 'Tracked emails' });
+  });
+
+  it('detail view shows an error with retry when history fails to load', async () => {
+    let n = 0;
+    const m = opened({ id: 'mx' });
+    const { client } = fakeBus({
+      GET_AUTH_STATE: () => loggedIn,
+      LIST_ACCOUNTS: () => ({ accounts: [] }),
+      GET_ACTIVE_TAB_ACCOUNT: () => ({ account: null }),
+      LIST_MESSAGES: () => ({ messages: [m] }),
+      GET_MESSAGE_EVENTS: () =>
+        ++n === 1
+          ? { ok: false as const, error: { code: 'NETWORK' as const, message: 'offline' } }
+          : { message: m, events: [] },
+    });
+    mount(client);
+    fireEvent.click(
+      within(await screen.findByRole('list', { name: 'Tracked emails' })).getAllByRole(
+        'button',
+      )[0]!,
+    );
+    await screen.findByText(/Couldn’t load activity/);
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByText('No activity yet.');
   });
 
   it('preselects the active Gmail tab’s account and hides chips', async () => {

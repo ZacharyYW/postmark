@@ -69,3 +69,36 @@ describe('CIDR matching', () => {
     expect(cidrs).toHaveLength(3);
   });
 });
+
+describe('isIP (runtime-independent)', async () => {
+  const { isIP } = await import('../src/tracking/cidr');
+  it.each([
+    ['1.2.3.4', 4],
+    ['255.255.255.255', 4],
+    ['256.1.1.1', 0],
+    ['01.2.3.4', 0],
+    ['::1', 6],
+    ['2620:149::1', 6],
+    ['fe80::1:2:3:4', 6],
+    ['::ffff:17.1.2.3', 6],
+    ['2001:db8:0:0:0:0:2:1', 6],
+    ['1::2::3', 0],
+    ['unknown', 0],
+    ['12345::', 0],
+    ['', 0],
+  ])('%s → %s', (ip, v) => expect(isIP(ip)).toBe(v));
+});
+
+describe('D1 migration', () => {
+  it('matches the Node schema exactly', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { SCHEMA_SQL } = await import('../src/db/schema');
+    const migration = readFileSync(new URL('../migrations/0001_init.sql', import.meta.url), 'utf8');
+    const norm = (s: string) =>
+      s
+        .replace(/--.*\n/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    expect(norm(migration)).toBe(norm(SCHEMA_SQL));
+  });
+});

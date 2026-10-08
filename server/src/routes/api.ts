@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import {
   BindMessageReq,
   CreateMessageReq,
@@ -28,7 +28,10 @@ export interface ApiDeps {
   repo: Repo;
   limiters: Limiters;
   tracking: TrackingContext;
-  publicBaseUrl: string;
+  /** Public origin for pixel/link URLs (env, or derived from the request on Workers). */
+  publicBaseUrl: (c: Context<AppEnv>) => string;
+  /** If non-empty, only these emails may register (lock a personal deployment down). */
+  allowedEmails: string[];
   allowTokenRotation: boolean;
   now: () => number;
 }
@@ -44,20 +47,23 @@ export function apiRoutes(d: ApiDeps): Hono<AppEnv> {
       throw new ApiHttpError(429, 'RATE_LIMITED', 'Too many registrations');
     }
     const { email } = parseOr400(RegisterReq, await jsonBody(c));
+    if (d.allowedEmails.length > 0 && !d.allowedEmails.includes(email)) {
+      throw new ApiHttpError(403, 'REGISTRATION_CLOSED', 'Registration is closed on this server');
+    }
     const token = randomToken(32);
     const tokenHash = sha256Hex(token);
-    const existing = repo.findUserByEmail(email);
+    const existing = await repo.findUserByEmail(email);
     if (existing) {
       // TODO(prod): replace with Google OAuth via chrome.identity; see docs/DECISIONS.md D-006.
       if (!d.allowTokenRotation) {
         throw new ApiHttpError(409, 'EMAIL_TAKEN', 'This email is already registered');
       }
-      repo.updateUserToken(existing.id, tokenHash);
+      await repo.updateUserToken(existing.id, tokenHash);
       const res: RegisterRes = { token, userId: existing.id, email };
       return c.json(res, 200);
     }
     const userId = newId();
-    repo.createUser({ id: userId, email, token_hash: tokenHash, created_at: d.now() });
+    await repo.createUser({ id: userId, email, token_hash: tokenHash, created_at: d.now() });
     const res: RegisterRes = { token, userId, email };
     return c.json(res, 201);
   });
@@ -69,7 +75,7 @@ export function apiRoutes(d: ApiDeps): Hono<AppEnv> {
   });
 
   // ---------- me ----------
-  api.get('/me', (c) => {
+  api.get('/me', async (c) => {
     const u = c.get('user');
     const res: MeRes = {
       userId: u.id,
@@ -79,22 +85,25 @@ export function apiRoutes(d: ApiDeps): Hono<AppEnv> {
     return c.json(res);
   });
 
-  api.delete('/me', (c) => {
-    repo.deleteUser(c.get('user').id);
+  api.delete('/me', async (c) => {
+    await repo.deleteUser(c.get('user').id);
     return c.body(null, 204);
   });
 
   // ---------- messages ----------
-  const buildCreateRes = (m: MessageRow): CreateMessageRes => ({
-    messageId: m.id,
-    pixelId: m.pixel_id,
-    pixelUrl: `${d.publicBaseUrl}/p/${m.pixel_id}.gif`,
-    rewrittenLinks: repo.linksForMessage(m.id).map((l) => ({
-      original: l.original_url,
-      trackedUrl: `${d.publicBaseUrl}/l/${l.id}`,
-      linkId: l.id,
-    })),
-  });
+  const buildCreateRes = async (c: Context<AppEnv>, m: MessageRow): Promise<CreateMessageRes> => {
+    const base = d.publicBaseUrl(c);
+    return {
+      messageId: m.id,
+      pixelId: m.pixel_id,
+      pixelUrl: `${base}/p/${m.pixel_id}.gif`,
+      rewrittenLinks: (await repo.linksForMessage(m.id)).map((l) => ({
+        original: l.original_url,
+        trackedUrl: `${base}/l/${l.id}`,
+        linkId: l.id,
+      })),
+    };
+  };
 
   api.post('/messages', async (c) => {
     const user = c.get('user');
@@ -102,39 +111,36 @@ export function apiRoutes(d: ApiDeps): Hono<AppEnv> {
     const uniqueLinks = [...new Set(body.links)];
     const now = d.now();
 
-    const result = repo.tx(() => {
+    const replay = async (existing: MessageRow) => {
+      if (existing.gmail_message_id !== null) {
+        throw new ApiHttpError(
+          409,
+          'ALREADY_SENT',
+          'This compose was already sent and bound; start a new compose',
+        );
+      }
+      if (existing.sender_account !== body.senderAccount) {
+        throw new ApiHttpError(409, 'ACCOUNT_MISMATCH', 'clientRequestId reused across accounts');
+      }
+      // Idempotent replay (Undo Send / double click): register any new URLs.
+      const known = new Set((await repo.linksForMessage(existing.id)).map((l) => l.original_url));
+      let pos = known.size;
+      const fresh = uniqueLinks
+        .filter((url) => !known.has(url))
+        .map((url) => ({
+          id: newId(),
+          message_id: existing.id,
+          original_url: url,
+          position: pos++,
+        }));
+      if (fresh.length > 0) await repo.insertLinks(fresh);
+      return { message: existing, created: false };
+    };
+
+    const result = await (async () => {
       if (body.clientRequestId) {
-        const existing = repo.findMessageByClientRequest(user.id, body.clientRequestId);
-        if (existing) {
-          if (existing.gmail_message_id !== null) {
-            throw new ApiHttpError(
-              409,
-              'ALREADY_SENT',
-              'This compose was already sent and bound; start a new compose',
-            );
-          }
-          if (existing.sender_account !== body.senderAccount) {
-            throw new ApiHttpError(
-              409,
-              'ACCOUNT_MISMATCH',
-              'clientRequestId reused across accounts',
-            );
-          }
-          // Idempotent replay (Undo Send / double click): register any new URLs.
-          const known = new Set(repo.linksForMessage(existing.id).map((l) => l.original_url));
-          let pos = known.size;
-          for (const url of uniqueLinks) {
-            if (!known.has(url)) {
-              repo.insertLink({
-                id: newId(),
-                message_id: existing.id,
-                original_url: url,
-                position: pos++,
-              });
-            }
-          }
-          return { message: existing, created: false };
-        }
+        const existing = await repo.findMessageByClientRequest(user.id, body.clientRequestId);
+        if (existing) return replay(existing);
       }
       const message: MessageRow = {
         id: newId(),
@@ -151,34 +157,48 @@ export function apiRoutes(d: ApiDeps): Hono<AppEnv> {
         replied_at: null,
         created_at: now,
       };
-      repo.insertMessage(message);
-      uniqueLinks.forEach((url, position) =>
-        repo.insertLink({ id: newId(), message_id: message.id, original_url: url, position }),
-      );
+      try {
+        await repo.insertMessageWithLinks(
+          message,
+          uniqueLinks.map((url, position) => ({
+            id: newId(),
+            message_id: message.id,
+            original_url: url,
+            position,
+          })),
+        );
+      } catch (err) {
+        // A concurrent request with the same clientRequestId won the race: replay it.
+        const existing = body.clientRequestId
+          ? await repo.findMessageByClientRequest(user.id, body.clientRequestId)
+          : undefined;
+        if (existing) return replay(existing);
+        throw err;
+      }
       return { message, created: true };
-    });
+    })();
 
-    return c.json(buildCreateRes(result.message), result.created ? 201 : 200);
+    return c.json(await buildCreateRes(c, result.message), result.created ? 201 : 200);
   });
 
   api.patch('/messages/:id', async (c) => {
     const user = c.get('user');
     const body = parseOr400(BindMessageReq, await jsonBody(c));
-    const ok = repo.bindMessage(user.id, c.req.param('id'), {
+    const ok = await repo.bindMessage(user.id, c.req.param('id'), {
       ...(body.gmailThreadId !== undefined && { gmailThreadId: body.gmailThreadId }),
       ...(body.gmailMessageId !== undefined && { gmailMessageId: body.gmailMessageId }),
       ...(body.repliedAt !== undefined && { repliedAt: Date.parse(body.repliedAt) }),
     });
     if (!ok) throw notFound('Message');
-    const row = repo.getMessage(user.id, c.req.param('id'));
+    const row = await repo.getMessage(user.id, c.req.param('id'));
     if (!row) throw notFound('Message');
-    return c.json(repo.summarize([row])[0]);
+    return c.json((await repo.summarize([row]))[0]);
   });
 
-  api.get('/messages', (c) => {
+  api.get('/messages', async (c) => {
     const user = c.get('user');
     const q = parseOr400(ListMessagesQuery, c.req.query());
-    const rows = repo.listMessageRows(user.id, {
+    const rows = await repo.listMessageRows(user.id, {
       limit: q.limit,
       ...(q.account !== undefined && { account: q.account }),
       ...(q.accounts !== undefined && { accounts: q.accounts }),
@@ -186,47 +206,47 @@ export function apiRoutes(d: ApiDeps): Hono<AppEnv> {
       ...(q.threadIds !== undefined && { threadIds: q.threadIds }),
       ...(q.q !== undefined && q.q.trim() !== '' && { q: q.q.trim() }),
     });
-    return c.json({ messages: repo.summarize(rows) });
+    return c.json({ messages: await repo.summarize(rows) });
   });
 
-  api.get('/messages/:id', (c) => {
-    const row = repo.getMessage(c.get('user').id, c.req.param('id'));
+  api.get('/messages/:id', async (c) => {
+    const row = await repo.getMessage(c.get('user').id, c.req.param('id'));
     if (!row) throw notFound('Message');
-    return c.json(repo.summarize([row])[0]);
+    return c.json((await repo.summarize([row]))[0]);
   });
 
   // Owner-only: the pixel URL (used by scripts/simulate-open.ts and for debugging).
-  api.get('/messages/:id/pixel', (c) => {
-    const row = repo.getMessage(c.get('user').id, c.req.param('id'));
+  api.get('/messages/:id/pixel', async (c) => {
+    const row = await repo.getMessage(c.get('user').id, c.req.param('id'));
     if (!row) throw notFound('Message');
-    return c.json({ pixelUrl: `${d.publicBaseUrl}/p/${row.pixel_id}.gif` });
+    return c.json({ pixelUrl: `${d.publicBaseUrl(c)}/p/${row.pixel_id}.gif` });
   });
 
-  api.get('/messages/:id/events', (c) => {
+  api.get('/messages/:id/events', async (c) => {
     const user = c.get('user');
-    const row = repo.getMessage(user.id, c.req.param('id'));
+    const row = await repo.getMessage(user.id, c.req.param('id'));
     if (!row) throw notFound('Message');
-    return c.json({ events: repo.eventsForMessage(user.id, row.id) });
+    return c.json({ events: await repo.eventsForMessage(user.id, row.id) });
   });
 
   api.post('/messages/:id/self-view', async (c) => {
     const user = c.get('user');
     const { account } = parseOr400(SelfViewReq, await jsonBody(c));
-    const row = repo.getMessage(user.id, c.req.param('id'));
+    const row = await repo.getMessage(user.id, c.req.param('id'));
     if (!row) throw notFound('Message');
-    recordSelfView(d.tracking, row, account, d.now());
+    await recordSelfView(d.tracking, row, account, d.now());
     return c.body(null, 204);
   });
 
   // ---------- accounts ----------
-  api.get('/accounts', (c) => c.json({ accounts: repo.accounts(c.get('user').id) }));
+  api.get('/accounts', async (c) => c.json({ accounts: await repo.accounts(c.get('user').id) }));
 
   api.patch('/accounts/:account', async (c) => {
     const user = c.get('user');
     const account = normalizeAccount(decodeURIComponent(c.req.param('account')));
     if (!account) throw new ApiHttpError(400, 'VALIDATION', 'Invalid account');
     const patch = parseOr400(PatchAccountReq, await jsonBody(c));
-    const settings = repo.getUserSettings(user.id);
+    const settings = await repo.getUserSettings(user.id);
     const accounts = { ...(settings.accounts ?? {}) };
     if (!(account in accounts) && Object.keys(accounts).length >= 100) {
       throw new ApiHttpError(400, 'TOO_MANY_ACCOUNTS', 'Too many accounts with custom settings');
@@ -239,21 +259,21 @@ export function apiRoutes(d: ApiDeps): Hono<AppEnv> {
       else if (v !== undefined) (current as Record<string, unknown>)[key] = v;
     }
     accounts[account] = current;
-    repo.setUserSettings(user.id, { ...settings, accounts });
-    const info = repo.accounts(user.id).find((a) => a.account === account);
+    await repo.setUserSettings(user.id, { ...settings, accounts });
+    const info = (await repo.accounts(user.id)).find((a) => a.account === account);
     return c.json(info);
   });
 
   // ---------- events (notification polling) ----------
-  api.get('/events', (c) => {
+  api.get('/events', async (c) => {
     const user = c.get('user');
     const q = parseOr400(EventsQuery, c.req.query());
     if (q.cursor === undefined && q.since === undefined) {
       // Bootstrap: hand back the current high-water mark so a new client doesn't replay history.
-      return c.json({ events: [], cursor: String(repo.maxEventIdForUser(user.id)) });
+      return c.json({ events: [], cursor: String(await repo.maxEventIdForUser(user.id)) });
     }
     const cursor = q.cursor !== undefined ? Number(q.cursor) : undefined;
-    const raw = repo.eventsAfter(user.id, {
+    const raw = await repo.eventsAfter(user.id, {
       limit: q.limit,
       ...(cursor !== undefined && { cursor }),
       ...(q.since !== undefined && cursor === undefined && { since: Date.parse(q.since) }),
@@ -275,7 +295,7 @@ export function apiRoutes(d: ApiDeps): Hono<AppEnv> {
   api.post('/reminders', async (c) => {
     const user = c.get('user');
     const body = parseOr400(CreateReminderReq, await jsonBody(c));
-    const msg = repo.getMessage(user.id, body.messageId);
+    const msg = await repo.getMessage(user.id, body.messageId);
     if (!msg) throw notFound('Message');
     const remindAt = Date.parse(body.remindAt);
     const now = d.now();
@@ -283,7 +303,7 @@ export function apiRoutes(d: ApiDeps): Hono<AppEnv> {
       throw new ApiHttpError(400, 'VALIDATION', 'remindAt must be in the future (≤ 1 year)');
     }
     const id = newId();
-    repo.insertReminder({
+    await repo.insertReminder({
       id,
       message_id: msg.id,
       remind_at: remindAt,
@@ -291,13 +311,13 @@ export function apiRoutes(d: ApiDeps): Hono<AppEnv> {
       status: 'pending',
       created_at: now,
     });
-    return c.json(repo.listReminders(user.id, { id })[0], 201);
+    return c.json((await repo.listReminders(user.id, { id }))[0], 201);
   });
 
-  api.get('/reminders', (c) => {
+  api.get('/reminders', async (c) => {
     const q = parseOr400(RemindersQuery, c.req.query());
     return c.json({
-      reminders: repo.listReminders(c.get('user').id, {
+      reminders: await repo.listReminders(c.get('user').id, {
         ...(q.status !== undefined && { status: q.status }),
         ...(q.account !== undefined && { account: q.account }),
       }),
@@ -307,12 +327,14 @@ export function apiRoutes(d: ApiDeps): Hono<AppEnv> {
   api.patch('/reminders/:id', async (c) => {
     const user = c.get('user');
     const { status } = parseOr400(PatchReminderReq, await jsonBody(c));
-    if (!repo.updateReminderStatus(user.id, c.req.param('id'), status)) throw notFound('Reminder');
-    return c.json(repo.listReminders(user.id, { id: c.req.param('id') })[0]);
+    if (!(await repo.updateReminderStatus(user.id, c.req.param('id'), status)))
+      throw notFound('Reminder');
+    return c.json((await repo.listReminders(user.id, { id: c.req.param('id') }))[0]);
   });
 
-  api.delete('/reminders/:id', (c) => {
-    if (!repo.deleteReminder(c.get('user').id, c.req.param('id'))) throw notFound('Reminder');
+  api.delete('/reminders/:id', async (c) => {
+    if (!(await repo.deleteReminder(c.get('user').id, c.req.param('id'))))
+      throw notFound('Reminder');
     return c.body(null, 204);
   });
 

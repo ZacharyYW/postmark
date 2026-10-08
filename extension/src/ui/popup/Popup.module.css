@@ -230,3 +230,124 @@
   color: var(--pm-muted);
   border-top: 1px solid var(--pm-border);
 }
+.detail {
+  padding: 10px 12px 12px;
+  overflow-y: auto;
+  flex: 1;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+.detailBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.linkBtn {
+  all: unset;
+  cursor: pointer;
+  color: var(--pm-accent);
+  font-weight: 600;
+}
+.linkBtn:focus-visible {
+  outline: 2px solid var(--pm-focus);
+  outline-offset: 2px;
+}
+.primarySmall {
+  all: unset;
+  cursor: pointer;
+  background: var(--pm-accent);
+  color: var(--pm-accent-text);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-weight: 600;
+  font-size: 12px;
+}
+.primarySmall:focus-visible {
+  outline: 2px solid var(--pm-focus);
+  outline-offset: 2px;
+}
+.muted {
+  color: var(--pm-muted);
+  font-size: 12px;
+}
+.detailTitle {
+  margin: 0;
+  font-size: 15px;
+}
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 10px;
+  margin: 0;
+}
+.facts dt {
+  color: var(--pm-muted);
+}
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.linkList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sectionTitle {
+  margin: 6px 0 0;
+  font-size: 13px;
+}
+.activity {
+  display: grid;
+  gap: 6px;
+}
+.attrib {
+  margin: 0;
+  font-size: 12px;
+  color: var(--pm-muted);
+}
+.emptyActivity {
+  margin: 0;
+  color: var(--pm-muted);
+}
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.tlItem {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.tlIgnored {
+  opacity: 0.6;
+}
+.tlDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.tlText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tlTime {
+  color: var(--pm-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.ok {
+  color: var(--pm-ok);
+}
+.warn {
+  color: var(--pm-warn);
+}
+.info {
+  color: var(--pm-info);
+}

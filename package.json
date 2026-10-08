@@ -21,19 +21,28 @@
     "verify": "npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build",
     "dev:server": "npm run dev -w server",
     "seed": "tsx scripts/seed.ts",
-    "simulate": "tsx scripts/simulate-open.ts"
+    "simulate": "tsx scripts/simulate-open.ts",
+    "deploy:cloudflare": "node scripts/deploy-cloudflare.mjs",
+    "cf:reset-token": "node scripts/cf-reset-token.mjs",
+    "cf:dev": "npm run cf:dev -w server"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
+    "@types/node": "22.20.5",
     "eslint": "9.39.5",
     "eslint-config-prettier": "10.1.8",
     "globals": "16.5.0",
     "prettier": "3.6.2",
+    "sharp": "0.35.5",
+    "tsx": "4.20.6",
     "typescript": "5.9.3",
     "typescript-eslint": "8.69.0",
-    "tsx": "4.20.6",
-    "vitest": "4.1.11",
-    "@types/node": "22.20.5",
-    "vite": "6.4.3"
+    "undici": "7.29.1",
+    "vite": "6.4.3",
+    "vitest": "4.1.11"
+  },
+  "overrides": {
+    "undici": "$undici",
+    "sharp": "$sharp"
   }
 }

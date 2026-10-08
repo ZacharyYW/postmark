@@ -21,6 +21,7 @@ Probabilistic read receipts and link-click tracking for Gmail: a Chrome (MV3) ex
 - ✓ / ✓✓ marks in Gmail's Sent list (grey = sent, green = opened, amber = possibly auto-loaded), plus a link-click icon
 - A "Tracking" strip under each of your tracked messages in a thread: opens (first/last), per-link clicks, and a **Remind me** button
 - A popup dashboard (recent emails, reminders, account switcher, search) and an options page
+- **Full activity history per email**: every open and click with its time and source (Gmail, mail app, Apple's auto-loading, security scanners, your own views), in the popup and in Gmail's tracking strip
 - Desktop notifications on first open and on link clicks; follow-up reminders
 - Multiple Gmail accounts in one Chrome profile, each scoped to its own tab
 - Per-email toggle (eye icon in the compose toolbar), per-account and global defaults, and an optional disclosure line
@@ -32,9 +33,9 @@ Probabilistic read receipts and link-click tracking for Gmail: a Chrome (MV3) ex
 | Path | What |
 |---|---|
 | `shared/` | zod schemas, types, the settings resolver and the message-bus types, used by both sides |
-| `server/` | Hono + better-sqlite3 tracking server (port 8787), with Dockerfile |
+| `server/` | Hono tracking server. Runs on **Cloudflare Workers + D1** (`src/worker.ts`, free 24/7) or Node + better-sqlite3 (`src/index.ts`, port 8787, Dockerfile) |
 | `extension/` | MV3 extension (Vite + CRXJS, Preact, InboxSDK) |
-| `scripts/` | `seed.ts`, `simulate-open.ts`, `gen-icons.mjs` |
+| `scripts/` | `deploy-cloudflare.mjs`, `cf-reset-token.mjs`, `seed.ts`, `simulate-open.ts`, `gen-icons.mjs` |
 | `docs/` | plans, decisions, open-detection heuristics, Gmail integration guide, reviews |
 
 ## Setup
@@ -52,7 +53,8 @@ npm run verify              # typecheck, lint, format check, all tests, both bui
 | Variable | Default | Used by |
 |---|---|---|
 | `PORT` | `8787` | server |
-| `PUBLIC_BASE_URL` | `http://localhost:8787` | server: base for pixel/link URLs. **Must be internet-reachable over https for real recipients.** |
+| `PUBLIC_BASE_URL` | *(origin of each request)* | server: base for pixel/link URLs. **Must be internet-reachable over https for real recipients.** Not needed on Cloudflare. |
+| `ALLOWED_EMAILS` | *(empty = anyone may register)* | server: comma-separated emails allowed to register |
 | `DATABASE_PATH` | `./data/postmark.db` | server |
 | `EXTENSION_IDS` | *(empty = any extension, dev only)* | server CORS |
 | `TRUST_PROXY` | `false` | server: honour `X-Forwarded-For` |
@@ -87,23 +89,38 @@ npm run build -w extension               # → extension/dist
 2. The options page opens. Enter an email and click **Register**, or use **Connect with an existing token** (see the demo below).
 3. Open Gmail and reload the tab.
 
-For tracking with real recipients, the server must be reachable from the internet over https (for example behind a tunnel or reverse proxy). Set `PUBLIC_BASE_URL` to it, and in Options save the same URL as the server. Chrome will ask for permission to contact it.
+For tracking with real recipients the server must be reachable from the internet over https. See [Deploy for free on Cloudflare](#deploy-for-free-on-cloudflare-recommended-247-permanent-address).
 
-## Getting real read receipts (public tracking URL)
+## Deploy for free on Cloudflare (recommended: 24/7, permanent address)
 
-Recipients' mail clients (and Gmail's image proxy) must be able to fetch the pixel, so the server needs a **public https address**. The extension can keep talking to `http://localhost:8787`; only the pixel and link URLs have to be public.
+Real read receipts need a server that recipients' mail apps can reach at any hour. The easiest free option is Cloudflare Workers with its D1 database: free tier, no credit card, always on, a permanent `https://postmark.<you>.workers.dev` address, and no machine of yours needs to stay awake. One person's tracking uses a tiny fraction of the free limits (about 100,000 requests a day).
 
-1. Install a tunnel: `brew install cloudflared`.
-2. Run `cloudflared tunnel --url http://localhost:8787` and copy the `https://….trycloudflare.com` address it prints.
-3. In `.env` at the repo root, set:
-   ```
-   PUBLIC_BASE_URL=https://<your-address>.trycloudflare.com
-   TRUST_PROXY=true
-   ```
-4. Restart the server (`npm run dev:server`). It prints `Public base URL: https://…`.
-5. Send a new tracked email to another inbox and open it there.
+One-time setup:
 
-Quick tunnels get a new address every time `cloudflared` restarts, and emails sent earlier keep the old address, so their opens stop registering. For lasting use, set up a [named Cloudflare tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) or deploy the Docker image behind a domain.
+```bash
+npx -w server wrangler login                               # opens the browser; create a free account if needed
+npm run deploy:cloudflare -- --email you@gmail.com         # creates the database, sets it up, deploys
+```
+
+The script prints your server address. Then, in Chrome:
+
+1. Postmark → **Options** → **Server URL** → paste the address → **Save server** (allow Chrome's permission prompt).
+2. **Register** with the same email you passed to the deploy command. Only that email can register on your server.
+3. Reload your Gmail tabs.
+
+That's it. Nothing needs restarting, and your Mac can be off.
+
+- **Redeploy after code changes:** run the same `npm run deploy:cloudflare` command again. Your data is kept.
+- **Lost your login** (e.g. you reinstalled the extension): `npm run cf:reset-token -- --email you@gmail.com`, then paste the token into Options → *Connect with an existing token*.
+- **Try the Cloudflare build locally first:** `npm run cf:dev` (local database, http://127.0.0.1:8788).
+- **Limits to know:** the free plan's rate limiting runs per Cloudflare instance (best effort), and the history is stored in D1 (5 GB free). See `docs/DECISIONS.md` D-025…D-028.
+
+### Alternative: your own machine plus a tunnel (for development)
+
+1. `brew install cloudflared`, then `cloudflared tunnel --url http://localhost:8787`, and copy the `https://….trycloudflare.com` address.
+2. In `.env` at the repo root set `PUBLIC_BASE_URL=https://<that-address>` and `TRUST_PROXY=true`, then restart `npm run dev:server`.
+
+Quick-tunnel addresses change whenever `cloudflared` restarts, and emails sent earlier stop reporting opens, so use the Cloudflare deployment above for everyday use.
 
 ## Demo without a second inbox
 

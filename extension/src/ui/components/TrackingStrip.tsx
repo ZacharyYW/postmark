@@ -1,11 +1,13 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import {
   absoluteTime,
   relativeTime,
   type MessageSummary,
   type ReminderCondition,
+  type TrackingEvent,
 } from '@postmark/shared';
-import { hostOf, statusView } from '../format';
+import { ActivityTimeline } from './ActivityTimeline';
+import { shortUrl, statusView } from '../format';
 import { RemindPopover } from './RemindPopover';
 
 export interface TrackingStripProps {
@@ -13,6 +15,10 @@ export interface TrackingStripProps {
   collapsed: boolean;
   onToggle: (collapsed: boolean) => void;
   onRemind: (remindAt: Date, condition: ReminderCondition) => Promise<void>;
+  /** Loads the full activity history (lazily, when the user opens it). */
+  loadActivity?: () => Promise<TrackingEvent[]>;
+  /** Bumped when new tracking data arrives, so an open history refreshes itself. */
+  version?: number;
 }
 
 function When({ iso }: { iso: string | null }) {
@@ -25,8 +31,29 @@ function When({ iso }: { iso: string | null }) {
 }
 
 /** Compact per-message "Tracking" strip injected (in Shadow DOM) under a tracked outgoing message. */
-export function TrackingStrip({ message: m, collapsed, onToggle, onRemind }: TrackingStripProps) {
+export function TrackingStrip({
+  message: m,
+  collapsed,
+  onToggle,
+  onRemind,
+  loadActivity,
+  version = 0,
+}: TrackingStripProps) {
   const [open, setOpen] = useState(false);
+  const [showActivity, setShowActivity] = useState(false);
+  const [activity, setActivity] = useState<TrackingEvent[] | 'loading' | 'error'>('loading');
+
+  useEffect(() => {
+    if (!showActivity || !loadActivity) return;
+    let live = true;
+    loadActivity().then(
+      (ev) => live && setActivity(ev),
+      () => live && setActivity('error'),
+    );
+    return () => {
+      live = false;
+    };
+  }, [showActivity, loadActivity, version]);
   const [confirm, setConfirm] = useState<string | null>(null);
   const s = statusView(m);
   const bodyId = `pm-body-${m.id}`;
@@ -114,7 +141,7 @@ export function TrackingStrip({ message: m, collapsed, onToggle, onRemind }: Tra
                 {m.links.map((l) => (
                   <li key={l.id}>
                     <span class="url" title={l.originalUrl}>
-                      {hostOf(l.originalUrl)}
+                      {shortUrl(l.originalUrl)}
                     </span>
                     <span>
                       {l.clicks} {l.clicks === 1 ? 'click' : 'clicks'}
@@ -124,6 +151,33 @@ export function TrackingStrip({ message: m, collapsed, onToggle, onRemind }: Tra
               </ul>
             )}
           </div>
+          {loadActivity && (
+            <div class="row">
+              <span class="label">History</span>
+              <div>
+                <button
+                  type="button"
+                  class="linkBtn"
+                  aria-expanded={showActivity}
+                  onClick={() => setShowActivity(!showActivity)}
+                >
+                  {showActivity ? 'Hide full activity' : 'Show full activity'}
+                </button>
+                {showActivity &&
+                  (activity === 'loading' ? (
+                    <p class="fine" role="status">
+                      Loading…
+                    </p>
+                  ) : activity === 'error' ? (
+                    <p class="error" role="alert">
+                      Couldn’t load activity.
+                    </p>
+                  ) : (
+                    <ActivityTimeline events={activity} recipients={m.recipients} />
+                  ))}
+              </div>
+            </div>
+          )}
           <div class="fine">
             Open tracking is an estimate: image blocking hides opens, and privacy proxies can create
             false ones.

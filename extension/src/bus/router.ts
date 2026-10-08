@@ -51,6 +51,7 @@ export const CONTENT_SCRIPT_TYPES: ReadonlySet<BusType> = new Set<BusType>([
   'GET_MARKS',
   'GET_THREAD_TRACKING',
   'SELF_VIEW',
+  'GET_MESSAGE_EVENTS',
   'REPORT_REPLY',
   'GET_SETTINGS',
   'GET_AUTH_STATE',

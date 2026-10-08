@@ -1,7 +1,7 @@
 /** 43-byte transparent 1×1 GIF89a. */
-export const TRANSPARENT_GIF = Buffer.from(
-  'R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==',
-  'base64',
+export const TRANSPARENT_GIF: Uint8Array = Uint8Array.from(
+  atob('R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=='),
+  (ch) => ch.charCodeAt(0),
 );
 
 export const NO_STORE_HEADERS: Record<string, string> = {
