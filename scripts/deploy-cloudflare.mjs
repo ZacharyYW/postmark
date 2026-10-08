@@ -66,7 +66,17 @@ if (mig.code !== 0) fail('Migration failed (see above).');
 
 console.log('4/5 Deploying the Worker…');
 const dep = await wrangler(['deploy', '--config', DEPLOY_CONFIG]);
-if (dep.code !== 0) fail('Deploy failed (see above).');
+if (dep.code !== 0) {
+  const onboarding = dep.out.match(/https:\/\/dash\.cloudflare\.com\/\S*workers\/onboarding/)?.[0];
+  if (/register a workers\.dev subdomain/i.test(dep.out)) {
+    fail(
+      `One-time step: your Cloudflare account needs a workers.dev subdomain.\n` +
+        `  1. Open ${onboarding ?? 'https://dash.cloudflare.com → Workers & Pages'} and choose a subdomain name.\n` +
+        `  2. Re-run this command (the database is already set up and will be reused).`,
+    );
+  }
+  fail('Deploy failed (see above).');
+}
 const url = dep.out.match(/https:\/\/[a-z0-9.-]+\.workers\.dev/i)?.[0];
 if (!url) fail('Deployed, but could not find the workers.dev URL in the output above.');
 
