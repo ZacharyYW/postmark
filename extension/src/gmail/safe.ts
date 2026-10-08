@@ -2,8 +2,26 @@
 
 const logged = new Set<string>();
 
+/**
+ * False once this content script is orphaned (the extension was reloaded or updated while the
+ * Gmail tab stayed open). Orphaned scripts must go quiet: every chrome.* call would throw
+ * "Extension context invalidated" until the user reloads Gmail.
+ */
+export function extensionAlive(): boolean {
+  try {
+    return typeof chrome !== 'undefined' && Boolean(chrome.runtime?.id);
+  } catch {
+    return false;
+  }
+}
+
+export function isContextInvalidated(err: unknown): boolean {
+  return err instanceof Error && /Extension context invalidated/i.test(err.message);
+}
+
 export function logOnce(key: string, ...args: unknown[]): void {
   if (logged.has(key)) return;
+  if (!extensionAlive() || args.some(isContextInvalidated)) return; // orphaned: stay silent
   logged.add(key);
   console.warn(`[postmark] ${key}`, ...args);
 }

@@ -21,13 +21,17 @@ export function createBusClient(transport: BusTransport = chromeTransport): BusC
   return {
     async send(type, payload, opts) {
       const envelope = { __postmark: 1, type, payload } as BusEnvelope;
-      const call = transport(envelope).then((raw): BusResult<never> => {
-        if (isBusResult(raw)) return raw as BusResult<never>;
-        return {
-          ok: false,
-          error: { code: 'UNKNOWN', message: 'No response from service worker' },
-        };
-      });
+      // Promise.resolve().then(): sendMessage throws *synchronously* when the extension context is
+      // invalidated (extension reloaded while the page stayed open); turn that into a result.
+      const call = Promise.resolve()
+        .then(() => transport(envelope))
+        .then((raw): BusResult<never> => {
+          if (isBusResult(raw)) return raw as BusResult<never>;
+          return {
+            ok: false,
+            error: { code: 'UNKNOWN', message: 'No response from service worker' },
+          };
+        });
       const guarded = call.catch(
         (err: unknown): BusResult<never> => ({
           ok: false,

@@ -89,7 +89,7 @@ export function startThreadStrips(deps: ThreadStripDeps) {
           collapsed,
           onToggle: (c: boolean) => {
             collapsed = c;
-            void storage.set(c);
+            void storage.set(c).catch(() => undefined);
             draw();
           },
           onRemind: async (at, condition) => {

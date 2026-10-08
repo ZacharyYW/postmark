@@ -368,3 +368,43 @@ describe('R2: hostile server responses', () => {
     expect(toasts).toEqual([TOAST_UNTRACKED]);
   });
 });
+
+describe('orphaned content script', () => {
+  it('sends untracked with a "reload Gmail" toast instead of erroring', async () => {
+    const { TOAST_RELOAD } = await import('../src/gmail/compose');
+    const h = createHarness();
+    await signIn(h);
+    const bus = h.busFor(7);
+    const toasts: string[] = [];
+    const c = new FakeCompose('orphan', 'me@work.com', ['you@example.com']);
+    attachCompose(c, {
+      bus,
+      adapter: { toast: (t) => toasts.push(t) },
+      tabAccount: 'me@work.com',
+      isAlive: () => false,
+    });
+    await flush();
+    expect(await c.send(BODY)).toBe(BODY);
+    expect(toasts).toEqual([TOAST_RELOAD]);
+  });
+});
+
+describe('orphaned content script', () => {
+  it('sends untracked with a "reload Gmail" toast instead of erroring', async () => {
+    const { TOAST_RELOAD } = await import('../src/gmail/compose');
+    const h = createHarness();
+    await signIn(h);
+    const bus = h.busFor(7);
+    const toasts: string[] = [];
+    const c = new FakeCompose('orphan', 'me@work.com', ['you@example.com']);
+    attachCompose(c, {
+      bus,
+      adapter: { toast: (t) => toasts.push(t) },
+      tabAccount: 'me@work.com',
+      isAlive: () => false,
+    });
+    await flush();
+    expect(await c.send(BODY)).toBe(BODY);
+    expect(toasts).toEqual([TOAST_RELOAD]);
+  });
+});

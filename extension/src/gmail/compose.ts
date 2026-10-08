@@ -2,7 +2,7 @@ import { normalizeAccount, TIMING, toOrigin } from '@postmark/shared';
 import type { BusClient } from '../bus/client';
 import { applyTracking, collectLinks, hasPostmarkPixel } from '../compose/rewriteBody';
 import type { ComposeHandle, GmailAdapter } from './adapter';
-import { logOnce, withTimeout } from './safe';
+import { extensionAlive, logOnce, withTimeout } from './safe';
 
 export interface ComposeDeps {
   bus: BusClient;
@@ -13,6 +13,8 @@ export interface ComposeDeps {
   onAliases?: (aliases: string[]) => void;
   presendTimeoutMs?: number;
   bindRetryDelaysMs?: number[];
+  /** Whether the extension context is still valid (false after an extension reload). */
+  isAlive?: () => boolean;
 }
 
 export interface ComposeState {
@@ -23,6 +25,8 @@ export interface ComposeState {
 }
 
 export const TOAST_UNTRACKED = 'Sent without tracking';
+export const TOAST_RELOAD =
+  'Postmark was updated: reload Gmail to turn tracking back on. Sent without tracking.';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -67,6 +71,7 @@ export function attachCompose(compose: ComposeHandle, deps: ComposeDeps): Compos
 
   const prepare = async (body: string, isPlainText: boolean): Promise<{ body: string }> => {
     if (!state.on) return { body };
+    if (!(deps.isAlive ?? extensionAlive)()) return untracked(body, TOAST_RELOAD);
     if (isPlainText) return untracked(body, 'Plain-text message sent without tracking');
     const sender = senderAccount();
     if (!sender) return untracked(body); // never guess the account

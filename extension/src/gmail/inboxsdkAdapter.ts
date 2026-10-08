@@ -7,7 +7,7 @@ import type {
   MessageViewHandle,
   ThreadRowHandle,
 } from './adapter';
-import { LiveValue, logOnce, safe } from './safe';
+import { extensionAlive, LiveValue, logOnce, safe } from './safe';
 
 // The only file that imports InboxSDK. Everything here goes through public InboxSDK APIs; no
 // Gmail class names are hard-coded (see docs/GMAIL_INTEGRATION.md).
@@ -36,14 +36,9 @@ class InboxSdkCompose implements ComposeHandle {
   private resending = false;
 
   constructor(private readonly view: ComposeView) {
-    // getComposeID is stable for this compose window; fall back to a local counter.
-    let id: string | null = null;
-    try {
-      id = view.getComposeID();
-    } catch {
-      id = null;
-    }
-    this.id = id || `c${Date.now().toString(36)}${(composeSeq++).toString(36)}`;
+    // One InboxSdkCompose per compose window, so a local id is stable for its lifetime
+    // (InboxSDK's getComposeID is deprecated).
+    this.id = `c${Date.now().toString(36)}${(composeSeq++).toString(36)}`;
   }
 
   getFromAddress(): string | null {
@@ -170,7 +165,9 @@ function toggleDescriptor(on: boolean, onClick: () => void) {
     tooltip: on
       ? 'Postmark tracking is ON for this email. Click to turn off.'
       : 'Postmark tracking is OFF for this email. Click to turn on.',
-    iconUrl: chrome.runtime.getURL(on ? 'icons/eye-on.svg' : 'icons/eye-off.svg'),
+    iconUrl: extensionAlive()
+      ? chrome.runtime.getURL(on ? 'icons/eye-on.svg' : 'icons/eye-off.svg')
+      : '',
     type: 'MODIFIER' as const,
     orderHint: 10,
     onClick,
@@ -312,7 +309,9 @@ class InboxSdkAdapter implements GmailAdapter {
   onCompose(handler: (c: ComposeHandle) => void): void {
     try {
       this.sdk.Compose.registerComposeViewHandler(
-        safe('compose handler', (view: ComposeView) => handler(new InboxSdkCompose(view))),
+        safe('compose handler', (view: ComposeView) => {
+          if (extensionAlive()) handler(new InboxSdkCompose(view));
+        }),
       );
     } catch (err) {
       logOnce('compose hook failed to attach', err);
@@ -322,7 +321,9 @@ class InboxSdkAdapter implements GmailAdapter {
   onThreadRow(handler: (r: ThreadRowHandle) => void): void {
     try {
       this.sdk.Lists.registerThreadRowViewHandler(
-        safe('thread row handler', (row: ThreadRowView) => handler(new InboxSdkRow(row))),
+        safe('thread row handler', (row: ThreadRowView) => {
+          if (extensionAlive()) handler(new InboxSdkRow(row));
+        }),
       );
     } catch (err) {
       logOnce('list hook failed to attach', err);
@@ -332,7 +333,9 @@ class InboxSdkAdapter implements GmailAdapter {
   onMessageView(handler: (m: MessageViewHandle) => void): void {
     try {
       this.sdk.Conversations.registerMessageViewHandler(
-        safe('message view handler', (mv: MessageView) => handler(new InboxSdkMessage(mv))),
+        safe('message view handler', (mv: MessageView) => {
+          if (extensionAlive()) handler(new InboxSdkMessage(mv));
+        }),
       );
     } catch (err) {
       logOnce('thread hook failed to attach', err);

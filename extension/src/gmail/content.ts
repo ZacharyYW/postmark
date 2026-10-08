@@ -4,7 +4,7 @@ import { createBusClient } from '../bus/client';
 import { INBOXSDK_APP_ID } from '../config';
 import { attachCompose } from './compose';
 import { loadInboxSdkAdapter } from './inboxsdkAdapter';
-import { logOnce } from './safe';
+import { extensionAlive, logOnce } from './safe';
 import { startGmailSurfaces } from './surfaces';
 
 type UpdateListener = (p: PushMap['DATA_UPDATED']) => void;
@@ -37,7 +37,7 @@ async function main(): Promise<void> {
   report();
   // Re-report when the tab regains focus: the SW may have restarted or the extension reloaded.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') report();
+    if (document.visibilityState === 'visible' && extensionAlive()) report();
   });
 
   adapter.onCompose((compose) => {
@@ -59,9 +59,10 @@ async function main(): Promise<void> {
   });
 
   // Aliases learned in earlier sessions (persisted by the SW) widen this tab's scope immediately.
-  const stored = await chrome.storage.local.get('accountAliases');
-  const known =
-    (stored.accountAliases as Record<string, string[]> | undefined)?.[account ?? ''] ?? [];
+  const stored: { accountAliases?: Record<string, string[]> } = await chrome.storage.local
+    .get('accountAliases')
+    .catch(() => ({}));
+  const known = stored.accountAliases?.[account ?? ''] ?? [];
   known.forEach((a) => aliases.add(a));
 
   startGmailSurfaces({

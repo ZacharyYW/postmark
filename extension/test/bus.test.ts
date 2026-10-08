@@ -146,3 +146,27 @@ describe('bus client', () => {
     });
   });
 });
+
+describe('orphaned content script (extension reloaded, Gmail tab not)', () => {
+  it('a synchronous "Extension context invalidated" throw becomes a NETWORK result, not an uncaught error', async () => {
+    const client = createBusClient(() => {
+      throw new Error('Extension context invalidated.');
+    });
+    expect(await client.send('GET_AUTH_STATE', {})).toMatchObject({
+      ok: false,
+      error: { code: 'NETWORK' },
+    });
+  });
+});
+
+describe('orphaned content script (extension reloaded, Gmail tab not)', () => {
+  it('a synchronous "Extension context invalidated" throw becomes a NETWORK result, not an uncaught error', async () => {
+    const client = createBusClient(() => {
+      throw new Error('Extension context invalidated.');
+    });
+    expect(await client.send('GET_AUTH_STATE', {})).toMatchObject({
+      ok: false,
+      error: { code: 'NETWORK' },
+    });
+  });
+});
