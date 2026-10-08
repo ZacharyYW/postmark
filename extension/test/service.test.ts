@@ -319,3 +319,33 @@ describe('pure helpers', () => {
     expect(() => normalizeServerUrl('nope')).toThrow();
   });
 });
+
+describe('quiet hours per account', () => {
+  it('holds notifications for an account in its own quiet hours and releases them later', async () => {
+    const { h, tabA, mk } = await twoAccounts();
+    const hour = new Date().getHours();
+    const start = `${String(hour).padStart(2, '0')}:00`;
+    const end = `${String((hour + 1) % 24).padStart(2, '0')}:00`;
+    await h.busFor().send('UPDATE_ACCOUNT_SETTINGS', {
+      account: 'a@work.com',
+      settings: { quietHours: { start, end } },
+    });
+    const m = await mk(tabA, 'a@work.com', 'tQ');
+    h.clock.now += 60_000;
+    await hitPixel(h, m.pixelUrl);
+    h.clock.now += 30_000;
+    await h.service.poll();
+    const shown = (chrome.notifications as unknown as { _shown: { opts: { title: string } }[] })
+      ._shown;
+    expect(shown).toHaveLength(0);
+    const q = (await chrome.storage.local.get('quietQueue')).quietQueue as { account: string }[];
+    expect(q).toEqual([expect.objectContaining({ account: 'a@work.com' })]);
+    // Quiet hours over for that account → the next poll releases a summary.
+    await h
+      .busFor()
+      .send('UPDATE_ACCOUNT_SETTINGS', { account: 'a@work.com', settings: { quietHours: null } });
+    await h.service.poll();
+    expect(shown.map((n) => n.opts.title)).toEqual(['While notifications were paused']);
+    expect((await chrome.storage.local.get('quietQueue')).quietQueue).toEqual([]);
+  });
+});

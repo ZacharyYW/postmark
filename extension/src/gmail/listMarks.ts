@@ -10,6 +10,9 @@ export interface ListMarksDeps {
   iconUrl: IconUrl;
   onUpdate: (fn: (p: PushMap['DATA_UPDATED']) => void) => () => void;
   batchDelayMs?: number;
+  /** How long a "not tracked" answer for a thread is trusted before asking again. */
+  negativeTtlMs?: number;
+  now?: () => number;
 }
 
 /**
@@ -19,6 +22,10 @@ export interface ListMarksDeps {
 export function startListMarks(deps: ListMarksDeps) {
   const rowsByThread = new Map<string, Set<ThreadRowHandle>>();
   const marks = new Map<string, MessageSummary[]>();
+  /** threadId → when the SW said "no tracked messages here" (avoids re-asking on every re-render). */
+  const negative = new Map<string, number>();
+  const now = deps.now ?? (() => Date.now());
+  const negativeTtl = deps.negativeTtlMs ?? 60_000;
   let pending = new Set<string>();
   let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -45,7 +52,10 @@ export function startListMarks(deps: ListMarksDeps) {
         const ms = r.data.marks[id] ?? [];
         if (ms.length > 0 || marks.has(id)) {
           marks.set(id, ms);
+          negative.delete(id);
           render(id);
+        } else {
+          negative.set(id, now());
         }
       }
     }
@@ -67,11 +77,13 @@ export function startListMarks(deps: ListMarksDeps) {
         if (set.size === 0) rowsByThread.delete(threadId);
       });
       if (marks.has(threadId)) render(threadId);
-      else request([threadId]);
+      else if (now() - (negative.get(threadId) ?? -Infinity) > negativeTtl) request([threadId]);
     });
   });
 
   const off = deps.onUpdate((p) => {
+    // Pushed updates always bypass the negative cache (e.g. a just-sent message got bound).
+    p.threadIds.forEach((t) => negative.delete(t));
     const visible = p.threadIds.filter((t) => rowsByThread.has(t));
     if (visible.length > 0) request(visible);
   });
@@ -80,6 +92,6 @@ export function startListMarks(deps: ListMarksDeps) {
     /** For tests: force pending requests through now. */
     flush,
     stop: off,
-    _state: { rowsByThread, marks },
+    _state: { rowsByThread, marks, negative },
   };
 }

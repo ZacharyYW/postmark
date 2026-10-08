@@ -84,7 +84,17 @@ export function createApp(opts: AppOptions): CreatedApp {
   app.get('/healthz', (c) => c.json({ ok: true }));
 
   // Public routes: no CORS restrictions needed (images / top-level navigations).
-  app.route('/', publicRoutes({ tracking, limiter: limiters.publicByIp, now, getIp, log }));
+  app.route(
+    '/',
+    publicRoutes({
+      tracking,
+      limiter: limiters.publicByIp,
+      resourceLimiter: limiters.publicByResource,
+      now,
+      getIp,
+      log,
+    }),
+  );
 
   app.use(
     '/v1/*',

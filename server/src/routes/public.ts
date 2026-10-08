@@ -8,6 +8,7 @@ import { recordClick, recordOpen, type TrackingContext } from '../tracking/recor
 export interface PublicDeps {
   tracking: TrackingContext;
   limiter: TokenBucketLimiter;
+  resourceLimiter: TokenBucketLimiter;
   now: () => number;
   getIp: (c: Context<AppEnv>) => string;
   log: (msg: string) => void;
@@ -18,6 +19,9 @@ const NOT_FOUND_HTML =
 
 export function publicRoutes(d: PublicDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+  // Both buckets must have a token. Over-limit requests are still served, just not recorded.
+  const allowed = (ipKey: string, resourceKey: string) =>
+    d.resourceLimiter.take(resourceKey) && d.limiter.take(ipKey);
 
   app.get('/p/:file', (c) => {
     const gif = () => c.body(new Uint8Array(TRANSPARENT_GIF), 200, NO_STORE_HEADERS);
@@ -25,7 +29,7 @@ export function publicRoutes(d: PublicDeps): Hono<AppEnv> {
     if (!m?.[1]) return gif();
     // Rate-limited requests still get the image (never break the recipient's rendering),
     // they just aren't recorded.
-    if (!d.limiter.take(`p:${c.get('ipHash')}`)) return gif();
+    if (!allowed(`p:${c.get('ipHash')}`, `p:${c.get('ipHash')}:${m[1]}`)) return gif();
     try {
       recordOpen(d.tracking, m[1], {
         ip: d.getIp(c),
@@ -42,7 +46,7 @@ export function publicRoutes(d: PublicDeps): Hono<AppEnv> {
   app.get('/l/:linkId', (c) => {
     const linkId = c.req.param('linkId');
     if (!ID_PATTERN.test(linkId)) return c.html(NOT_FOUND_HTML, 404);
-    const limited = !d.limiter.take(`l:${c.get('ipHash')}`);
+    const limited = !allowed(`l:${c.get('ipHash')}`, `l:${c.get('ipHash')}:${linkId}`);
     let url: string | null;
     if (limited) {
       url = d.tracking.repo.getLinkWithMessage(linkId)?.link.original_url ?? null;

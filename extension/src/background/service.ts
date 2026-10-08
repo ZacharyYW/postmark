@@ -210,6 +210,7 @@ export class PostmarkService {
             kind: q.kind === 'click' ? ('click' as const) : ('open' as const),
             messageId: q.messageId ?? '',
             subject: q.title,
+            account: q.account ?? '',
           })),
         );
         await setLocal({ quietQueue: queue.slice(-200) });
@@ -217,14 +218,19 @@ export class PostmarkService {
     }
   }
 
+  /** Release held notifications whose account is no longer in (its own) quiet hours. */
   private async flushQuietQueue(): Promise<void> {
-    const queue = (await getLocal('quietQueue')) ?? [];
-    if (queue.length === 0) return;
-    const global = await this.globalSettings();
+    const resolve = await this.resolver();
     const now = new Date();
-    if (isInQuietHours(global.quietHours, now)) return;
-    const summary = summarizeQueue(queue, now);
-    await setLocal({ quietQueue: [] });
+    const ready = await serialized(async () => {
+      const queue = (await getLocal('quietQueue')) ?? [];
+      if (queue.length === 0) return [];
+      const release = queue.filter((q) => !isInQuietHours(resolve(q.account).quietHours, now));
+      if (release.length === 0) return [];
+      await setLocal({ quietQueue: queue.filter((q) => !release.includes(q)) });
+      return release;
+    });
+    const summary = summarizeQueue(ready, now);
     if (summary) await this.showNotification(summary);
   }
 

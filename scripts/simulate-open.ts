@@ -7,6 +7,9 @@
  *   npm run simulate -- --message <id> --profiles gmail_proxy,apple_mpp
  *   npm run simulate -- --click              # also click the first tracked link
  *   npm run simulate -- --account me@x.com   # latest message from that sender account
+ *   npm run simulate -- --self-view          # first send the sender's self-view beacon (as the
+ *                                            # extension does when you open your own sent mail);
+ *                                            # the Gmail-proxy hit should then NOT count as an open
  *
  * Profiles: gmail_proxy, apple_mpp, apple_mail, outlook, browser, bot, curl
  * Note: identical (IP, class) hits within 30 s are deduplicated by design.
@@ -50,6 +53,14 @@ async function main() {
     if (!target)
       throw new Error('No tracked messages found. Send one from Gmail or run `npm run seed`.');
     messageId = target.id;
+    if (hasFlag('self-view')) {
+      await api(`/v1/messages/${target.id}/self-view`, {
+        method: 'POST',
+        token,
+        json: { account: target.senderAccount },
+      });
+      console.log(`Sent self-view beacon as ${target.senderAccount}`);
+    }
     console.log(`Target: "${target.subject}" from ${target.senderAccount} (sent ${target.sentAt})`);
     pixelUrl = (await api<{ pixelUrl: string }>(`/v1/messages/${messageId}/pixel`, { token }))
       .pixelUrl;

@@ -9,6 +9,8 @@ export interface QueuedNote {
   kind: 'open' | 'click' | 'reminder';
   messageId: string;
   subject: string;
+  /** Sender account whose quiet hours held this note back. */
+  account: string;
 }
 
 /** Everything the extension persists in chrome.storage.local. The token never leaves the SW. */

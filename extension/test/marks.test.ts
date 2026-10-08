@@ -136,3 +136,37 @@ describe('lastEventLabel honesty', () => {
     expect(lastEventLabel(m).text).toMatch(/^Possibly auto-loaded/);
   });
 });
+
+describe('list marks negative cache', () => {
+  it('does not re-query untracked threads on every re-render, but a push bypasses the cache', async () => {
+    const { fakeBus } = await import('./fakeBus');
+    const bus = fakeBus({ GET_MARKS: () => ({ marks: {} }) });
+    const handlers: ((r: ThreadRowHandle) => void)[] = [];
+    const updates: ((p: PushMap['DATA_UPDATED']) => void)[] = [];
+    let t = 1_000;
+    startListMarks({
+      adapter: { onThreadRow: (fn) => handlers.push(fn) },
+      bus: bus.client,
+      iconUrl: icon,
+      onUpdate: (fn) => {
+        updates.push(fn);
+        return () => {};
+      },
+      batchDelayMs: 1,
+      now: () => t,
+    });
+    const show = () => handlers.forEach((fn) => fn(new FakeRow('X')));
+    show();
+    await new Promise((r) => setTimeout(r, 10));
+    show(); // Gmail re-renders the Sent list
+    await new Promise((r) => setTimeout(r, 10));
+    expect(bus.calls.filter((c) => c.type === 'GET_MARKS')).toHaveLength(1);
+    t += 61_000;
+    show();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(bus.calls.filter((c) => c.type === 'GET_MARKS')).toHaveLength(2);
+    updates.forEach((fn) => fn({ messageIds: [], threadIds: ['X'] }));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(bus.calls.filter((c) => c.type === 'GET_MARKS')).toHaveLength(3);
+  });
+});

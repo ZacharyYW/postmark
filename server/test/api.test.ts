@@ -621,13 +621,37 @@ describe('cross-cutting', () => {
     const m = await createMessage(ctx, token);
     ctx.advance(60_000);
     let last = 0;
-    for (let i = 0; i < 70; i++) last = (await pixel(ctx, m.pixelId, UA.gmail)).status;
+    for (let i = 0; i < 40; i++) {
+      ctx.advance(31_000); // beyond the dedupe window, so each hit would otherwise be recorded
+      last = (await pixel(ctx, m.pixelId, UA.gmail)).status;
+    }
     expect(last).toBe(200);
     let limited = false;
     for (let i = 0; i < 130 && !limited; i++) {
       limited = (await ctx.req('/v1/me', { token })).status === 429;
     }
     expect(limited).toBe(true);
+  });
+
+  it('per-resource limit does not starve other pixels behind the same proxy IP', async () => {
+    const ctx = makeCtx({}, false);
+    const token = await ctx.register('u@x.com');
+    const a = await createMessage(ctx, token);
+    const b = await createMessage(ctx, token, { subject: 'Other' });
+    ctx.advance(60_000);
+    // Hammer A from one IP within a short time: only ~20 are recorded.
+    for (let i = 0; i < 40; i++) {
+      ctx.advance(100);
+      await pixel(ctx, a.pixelId, i % 2 ? UA.gmail : UA.chrome);
+    }
+    ctx.advance(31_000);
+    await pixel(ctx, b.pixelId, UA.gmail); // a different recipient's pixel via the same Google IP
+    const sb = await json<MessageSummary>(await ctx.req(`/v1/messages/${b.messageId}`, { token }));
+    expect(sb.opens.total).toBe(1);
+    const ev = await json<{ events: unknown[] }>(
+      await ctx.req(`/v1/messages/${a.messageId}/events`, { token }),
+    );
+    expect(ev.events.length).toBeLessThanOrEqual(20);
   });
 
   it('JSON 404 for unknown API routes', async () => {

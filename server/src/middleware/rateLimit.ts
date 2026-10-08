@@ -49,14 +49,21 @@ export class TokenBucketLimiter {
 }
 
 export interface Limiters {
+  /**
+   * Coarse per-IP cap for public routes. Generous because Gmail's image proxy fetches every
+   * Gmail recipient's pixels from a small pool of shared Google IPs.
+   */
   publicByIp: TokenBucketLimiter;
+  /** Tight per (IP, pixel/link) cap: stops one client hammering a single resource. */
+  publicByResource: TokenBucketLimiter;
   registerByIp: TokenBucketLimiter;
   apiByUser: TokenBucketLimiter;
 }
 
 export function defaultLimiters(): Limiters {
   return {
-    publicByIp: new TokenBucketLimiter(60, 1),
+    publicByIp: new TokenBucketLimiter(1200, 20),
+    publicByResource: new TokenBucketLimiter(20, 0.2),
     registerByIp: new TokenBucketLimiter(5, 5 / 60),
     apiByUser: new TokenBucketLimiter(120, 2),
   };

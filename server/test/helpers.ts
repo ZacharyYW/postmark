@@ -28,6 +28,7 @@ export function makeCtx(envOverrides: Record<string, string> = {}, generousLimit
   const limiters = generousLimits
     ? {
         publicByIp: new TokenBucketLimiter(10_000, 1000),
+        publicByResource: new TokenBucketLimiter(10_000, 1000),
         registerByIp: new TokenBucketLimiter(10_000, 1000),
         apiByUser: new TokenBucketLimiter(10_000, 1000),
       }

@@ -21,7 +21,7 @@ export function createHarness() {
     env: loadEnv({ PUBLIC_BASE_URL: SERVER, IP_HASH_SALT: 'harness-salt-1234567' }),
     now: () => clock.now,
     getSocketIp: () => '198.51.100.20',
-    limiters: { publicByIp: big(), registerByIp: big(), apiByUser: big() },
+    limiters: { publicByIp: big(), publicByResource: big(), registerByIp: big(), apiByUser: big() },
   });
   const network = { down: false, delayMs: 0 };
   const fetchImpl: typeof fetch = async (input, init) => {

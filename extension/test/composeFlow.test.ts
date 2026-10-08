@@ -281,3 +281,48 @@ describe('compose send flow (mocked Gmail adapter → real SW handlers → real 
     expect(accts.ok && accts.data.accounts.map((a) => a.account)).toContain('brand.new@gmail.com');
   });
 });
+
+describe('send-path races', () => {
+  it('discarding a draft never contacts the server', async () => {
+    const h = createHarness();
+    await signIn(h);
+    const bus = h.busFor(7);
+    await bus.send('ACTIVE_ACCOUNT', { account: 'me@work.com' });
+    const c = new FakeCompose('discard-1', 'me@work.com', ['you@example.com']);
+    attachCompose(c, {
+      bus,
+      adapter: { toast: () => {} },
+      tabAccount: 'me@work.com',
+      iconUrl: () => 'x',
+    });
+    await flush();
+    // User types, then discards: Gmail never sends, so the modifier never runs.
+    expect((await h.service.api.listMessages({ limit: 10 })).messages).toHaveLength(0);
+  });
+
+  it('server comes back after an offline send: next compose tracks normally', async () => {
+    const h = createHarness();
+    await signIn(h);
+    const bus = h.busFor(7);
+    await bus.send('ACTIVE_ACCOUNT', { account: 'me@work.com' });
+    const deps = {
+      bus,
+      adapter: { toast: () => {} },
+      tabAccount: 'me@work.com',
+      iconUrl: () => 'x',
+      bindRetryDelaysMs: [0],
+    };
+    const c1 = new FakeCompose('off-1', 'me@work.com', ['you@example.com']);
+    attachCompose(c1, deps);
+    await flush();
+    h.network.down = true;
+    expect(await c1.send('<div>a</div>')).toBe('<div>a</div>');
+    h.network.down = false;
+    const c2 = new FakeCompose('off-2', 'me@work.com', ['you@example.com']);
+    attachCompose(c2, deps);
+    await flush();
+    expect(await c2.send('<div>b</div>')).toContain('/p/');
+    await flush();
+    expect((await h.service.api.listMessages({ limit: 10 })).messages).toHaveLength(1);
+  });
+});
