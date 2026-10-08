@@ -40,7 +40,9 @@ export function buildManifest(serverUrl: string) {
     permissions: ['storage', 'alarms', 'notifications', 'scripting'],
     host_permissions: ['https://mail.google.com/*', originMatchPattern(serverUrl)],
     // Lets the user point the extension at a different self-hosted server from Options.
-    optional_host_permissions: ['https://*/*', 'http://localhost/*', 'http://127.0.0.1/*'],
+    optional_host_permissions: ['https://*/*', 'http://localhost/*', 'http://127.0.0.1/*'].filter(
+      (p) => p !== originMatchPattern(serverUrl),
+    ),
     web_accessible_resources: [
       { resources: ['icons/*.svg'], matches: ['https://mail.google.com/*'] },
     ],

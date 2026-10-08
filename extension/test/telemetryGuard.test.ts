@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  BLOCKED_STATUS,
-  blockedLog,
-  installTelemetryGuard,
-  isBlockedUrl,
-} from '../src/gmail/telemetryGuard';
+import { blockedLog, installTelemetryGuard, isBlockedUrl } from '../src/gmail/telemetryGuard';
 
 describe('InboxSDK telemetry guard', () => {
   it.each([
@@ -17,20 +12,29 @@ describe('InboxSDK telemetry guard', () => {
     ['/relative/path', false],
   ])('%s → %s', (url, blocked) => expect(isBlockedUrl(url)).toBe(blocked));
 
-  it('blocked XHRs fail locally with status 490 and never hit the network', async () => {
+  it('blocked XHRs are answered locally with 200 (no network, no error noise)', async () => {
     installTelemetryGuard(window as Window & typeof globalThis);
     const xhr = new XMLHttpRequest();
-    const result = await new Promise<number>((resolve) => {
-      xhr.onerror = () => resolve(xhr.status);
-      xhr.onload = () => resolve(-1);
+    const result = await new Promise<{ status: number; text: string }>((resolve, reject) => {
+      xhr.onerror = () => reject(new Error('should not error'));
+      xhr.onload = () => resolve({ status: xhr.status, text: xhr.responseText });
       xhr.open('POST', 'https://api.inboxsdk.com/api/v2/errors', true);
       xhr.setRequestHeader('Content-Type', 'application/json');
       xhr.send('{"error":"x"}');
     });
-    expect(result).toBe(BLOCKED_STATUS);
+    expect(result).toEqual({ status: 200, text: '{}' });
     expect(blockedLog).toContain('https://api.inboxsdk.com/api/v2/errors');
-    await expect(fetch('https://pubsub.googleapis.com/v1/projects/x')).rejects.toThrow(
-      /privacy guard/,
-    );
+
+    const token = await new Promise<string>((resolve) => {
+      const x = new XMLHttpRequest();
+      x.onload = () => resolve(x.responseText);
+      x.open('GET', 'https://api.inboxsdk.com/api/v2/events/oauth', true);
+      x.send();
+    });
+    // InboxSDK refreshes the token if it expires within 10 minutes; ours lasts a year.
+    expect(JSON.parse(token).expirationDate).toBeGreaterThan(Date.now() + 86_400_000);
+
+    const r = await fetch('https://pubsub.googleapis.com/v1/projects/x');
+    expect(r.status).toBe(200);
   });
 });
