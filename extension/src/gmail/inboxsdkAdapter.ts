@@ -32,7 +32,6 @@ let composeSeq = 0;
 class InboxSdkCompose implements ComposeHandle {
   readonly id: string;
   private modifier: BodyModifier | null = null;
-  private registered = false;
   private resending = false;
 
   constructor(private readonly view: ComposeView) {
@@ -97,34 +96,20 @@ class InboxSdkCompose implements ComposeHandle {
 
   registerBodyModifier(fn: BodyModifier): void {
     this.modifier = fn;
-    this.tryRegister();
-    // The request modifier needs a draft id, which Gmail assigns on first autosave.
-    this.view.on('draftSaved', () => this.tryRegister());
-    this.view.on('bodyChanged', () => this.tryRegister());
     this.view.on('presending', (e) => this.onPresending(e));
   }
 
-  private tryRegister(): void {
-    if (this.registered || !this.modifier) return;
-    const fn = this.modifier;
-    try {
-      // InboxSDK awaits our promise and sends the original body if it rejects (fail-soft).
-      this.view.registerRequestModifier(async (params) =>
-        fn({ body: params.body, isPlainText: Boolean(params.isPlainText) }),
-      );
-      this.registered = true;
-    } catch {
-      // No draft id yet; will retry on draftSaved / bodyChanged / presending.
-    }
-  }
-
   /**
-   * Fallback when the request modifier couldn't be registered before Send (very fast sends):
-   * cancel, rewrite the compose body in place, and send again.
+   * Intercept Send: cancel, rewrite the compose body in place, and send again.
+   *
+   * We deliberately don't use InboxSDK's registerRequestModifier: it hooks Gmail's send XHR,
+   * and on some accounts (seen on Google Workspace) Gmail sends through a request InboxSDK
+   * doesn't intercept, so the modifier is silently skipped and mail goes out untracked. The
+   * presending event comes from the Send button itself, so it fires on every account type.
+   * (Schedule send goes through a separate menu and is not intercepted.)
    */
   private onPresending(e: { cancel(): void }): void {
-    this.tryRegister();
-    if (this.registered || this.resending || !this.modifier) return;
+    if (this.resending || !this.modifier) return; // our own re-send: let it through
     const fn = this.modifier;
     e.cancel();
     this.resending = true;
@@ -135,7 +120,7 @@ class InboxSdkCompose implements ComposeHandle {
         if (body !== original) this.view.setBodyHTML(body);
         this.view.send();
       })
-      .catch((err: unknown) => logOnce('fallback resend failed', err))
+      .catch((err: unknown) => logOnce('resend after tracking failed', err))
       .finally(() => {
         this.resending = false;
       });

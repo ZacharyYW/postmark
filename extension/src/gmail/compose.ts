@@ -70,11 +70,17 @@ export function attachCompose(compose: ComposeHandle, deps: ComposeDeps): Compos
   };
 
   const prepare = async (body: string, isPlainText: boolean): Promise<{ body: string }> => {
-    if (!state.on) return { body };
+    if (!state.on) {
+      logOnce('send: tracking toggled off for this compose');
+      return { body };
+    }
     if (!(deps.isAlive ?? extensionAlive)()) return untracked(body, TOAST_RELOAD);
     if (isPlainText) return untracked(body, 'Plain-text message sent without tracking');
     const sender = senderAccount();
-    if (!sender) return untracked(body); // never guess the account
+    if (!sender) {
+      logOnce('send: could not determine the From account; sending untracked');
+      return untracked(body); // never guess the account
+    }
 
     const auth = await deps.bus.send('GET_AUTH_STATE', {}, { timeoutMs: 1000 });
     if (!auth.ok || !auth.data.loggedIn) {
@@ -85,7 +91,10 @@ export function attachCompose(compose: ComposeHandle, deps: ComposeDeps): Compos
       .filter((o): o is string => o !== null);
     if (known.length === 0) return untracked(body);
 
-    if (hasPostmarkPixel(body, known)) return { body }; // already tracked (draft resend)
+    if (hasPostmarkPixel(body, known)) {
+      logOnce('send: body already carries a Postmark pixel; not re-tracking');
+      return { body }; // already tracked (draft resend)
+    }
 
     const recipients = [
       ...new Set(
@@ -95,7 +104,10 @@ export function attachCompose(compose: ComposeHandle, deps: ComposeDeps): Compos
           .filter((r): r is string => !!r),
       ),
     ];
-    if (recipients.length === 0) return { body };
+    if (recipients.length === 0) {
+      logOnce('send: no recipients readable from the compose; sending untracked');
+      return { body };
+    }
 
     const settings = await deps.bus.send('GET_SETTINGS', { account: sender }, { timeoutMs: 1000 });
     const links = collectLinks(body, known);

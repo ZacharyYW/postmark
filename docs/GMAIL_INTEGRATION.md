@@ -17,8 +17,7 @@ MV3 requirement: the service worker imports `@inboxsdk/core/background.js`, whic
 | Surface | InboxSDK API | Our code | Depends on | Fails soft by |
 |---|---|---|---|---|
 | Compose toggle | `Compose.registerComposeViewHandler`, `composeView.addButton({type:'MODIFIER'})` with a live descriptor | `compose.ts` → `attachCompose` | compose toolbar | logging once; the email sends normally |
-| Body rewrite | `composeView.registerRequestModifier` (async, awaited by InboxSDK; the original body is sent if it rejects) | `compose.ts` + `compose/rewriteBody.ts` | a draft id (assigned on first autosave) | 3 s cap; any error → original body + "Sent without tracking" toast |
-| Very-fast-send fallback | `presending` → `cancel()`, `setBodyHTML()`, `send()` | `inboxsdkAdapter.ts` `onPresending` | used only if the request modifier couldn't register (no draft id yet) | original body is re-sent |
+| Body rewrite | `presending` → `cancel()`, `getHTMLContent()` → rewrite → `setBodyHTML()`, `send()` (our re-send passes through) | `inboxsdkAdapter.ts` `onPresending` + `compose.ts` + `compose/rewriteBody.ts` | the Send button (InboxSDK's presending stream); works on every account type | 3 s cap; any error → original body re-sent + "Sent without tracking" toast |
 | Sent binding | `sent` event → `getThreadID()` / `getMessageID()` | `compose.ts` (`BIND_SENT`, 4 attempts with backoff) | – | the message stays unbound: visible in the popup, no list mark |
 | Sent-list marks | `Lists.registerThreadRowViewHandler`, `row.getThreadIDIfStableAsync()`, `row.addAttachmentIcon(liveValue)` | `listMarks.ts`, `marks.ts` | the attachment-icon column | no mark |
 | Thread strip | `Conversations.registerMessageViewHandler`, `mv.getSender()`, `mv.getMessageIDAsync()`, `mv.getThreadView().getThreadIDAsync()`, `mv.getBodyElement()` (we insert before it) | `threadStrip.ts`, `ui/components/TrackingStrip.tsx` | message body element | no strip |

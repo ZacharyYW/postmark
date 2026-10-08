@@ -91,11 +91,6 @@ describe('InboxSDK adapter fails soft', () => {
       setBodyHTML: vi.fn(),
       send: vi.fn(),
     });
-    let attempts = 0;
-    view.registerRequestModifier.mockImplementation(() => {
-      attempts++;
-      if (attempts === 1) throw new Error('keyId should be set here'); // no draft id yet
-    });
     let handler: ((v: unknown) => void) | null = null;
     sdkState.sdk = {
       ...brokenSdk(),
@@ -113,14 +108,11 @@ describe('InboxSDK adapter fails soft', () => {
     const btn = c.addToggleButton({ initialOn: true, onClick: () => {} });
     expect(() => btn.setOn(false)).not.toThrow();
     c.registerBodyModifier(async ({ body }) => ({ body: `${body}<img>` }));
-    expect(attempts).toBe(1);
-    view.emit('draftSaved');
-    expect(attempts).toBe(2);
-    view.emit('draftSaved');
-    expect(attempts).toBe(2); // registered once only
+    // Gmail's send XHR is not hooked: some accounts send through a request InboxSDK misses.
+    expect(view.registerRequestModifier).not.toHaveBeenCalled();
   });
 
-  it('compose: presending fallback (no draft id) cancels, rewrites in place and re-sends once', async () => {
+  it('compose: presending cancels, rewrites in place and re-sends once', async () => {
     const view = Object.assign(new Emitter(), {
       getComposeID: () => 'cid2',
       getFromContact: () => ({ emailAddress: 'me@x.com' }),
@@ -131,13 +123,13 @@ describe('InboxSDK adapter fails soft', () => {
       getBccRecipients: () => [],
       isReply: () => false,
       addButton: () => {},
-      registerRequestModifier: () => {
-        throw new Error('keyId should be set here');
-      },
       getHTMLContent: () => '<div>body</div>',
       setBodyHTML: vi.fn(),
       send: vi.fn(),
     });
+    // Like Gmail, our re-send fires presending again synchronously; it must pass through.
+    const resendCancel = vi.fn();
+    view.send.mockImplementation(() => view.emit('presending', { cancel: resendCancel }));
     let handler: ((v: unknown) => void) | null = null;
     sdkState.sdk = {
       ...brokenSdk(),
@@ -154,6 +146,31 @@ describe('InboxSDK adapter fails soft', () => {
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
     expect(view.setBodyHTML).toHaveBeenCalledWith('<div>body</div><img data-postmark="1">');
+    expect(view.send).toHaveBeenCalledOnce();
+    expect(resendCancel).not.toHaveBeenCalled();
+  });
+
+  it('compose: an unchanged body (tracking off) is re-sent without touching the editor', async () => {
+    const view = Object.assign(new Emitter(), {
+      getFromContact: () => ({ emailAddress: 'me@x.com' }),
+      getFromContactChoices: () => [],
+      addButton: () => {},
+      getHTMLContent: () => '<div>body</div>',
+      setBodyHTML: vi.fn(),
+      send: vi.fn(),
+    });
+    let handler: ((v: unknown) => void) | null = null;
+    sdkState.sdk = {
+      ...brokenSdk(),
+      Compose: { registerComposeViewHandler: (fn: (v: unknown) => void) => (handler = fn) },
+    };
+    const adapter = await loadInboxSdkAdapter('sdk_test');
+    adapter.onCompose((c) => c.registerBodyModifier(async ({ body }) => ({ body })));
+    handler!(view);
+    view.emit('presending', { cancel: vi.fn() });
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(view.setBodyHTML).not.toHaveBeenCalled();
     expect(view.send).toHaveBeenCalledOnce();
   });
 
