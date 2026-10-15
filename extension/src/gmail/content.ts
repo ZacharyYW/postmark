@@ -4,6 +4,7 @@ import { createBusClient } from '../bus/client';
 import { INBOXSDK_APP_ID } from '../config';
 import { attachCompose } from './compose';
 import { loadInboxSdkAdapter } from './inboxsdkAdapter';
+import { startHistoryLauncher } from './historyLauncher';
 import { extensionAlive, logOnce } from './safe';
 import { startGmailSurfaces } from './surfaces';
 
@@ -19,6 +20,10 @@ async function main(): Promise<void> {
     return undefined;
   });
 
+  // Independent of InboxSDK, so the history panel works even if the Gmail hooks fail to load.
+  let account: string | null = null;
+  startHistoryLauncher({ getAccount: () => account });
+
   let adapter;
   try {
     adapter = await loadInboxSdkAdapter(INBOXSDK_APP_ID);
@@ -28,7 +33,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const account = normalizeAccount(adapter.getUserEmail());
+  account = normalizeAccount(adapter.getUserEmail());
   if (!account) logOnce('could not determine the Gmail account for this tab');
   const aliases = new Set<string>();
   const report = () => {

@@ -32,7 +32,14 @@ function isOffline(e: BusError) {
   return e.code === 'NETWORK' || e.code === 'TIMEOUT';
 }
 
-export function Popup({ onOpenOptions }: { onOpenOptions: () => void }) {
+export function Popup({
+  onOpenOptions,
+  onOpenThread,
+}: {
+  onOpenOptions: () => void;
+  /** Overrides "Open in Gmail" (the in-Gmail panel navigates its own tab instead). */
+  onOpenThread?: (threadId: string, account: string) => void;
+}) {
   const bus = useBus();
   const prefs = usePrefs();
   const [auth, setAuth] = useState<{ loggedIn: boolean; serverUrl: string } | null>(null);
@@ -178,6 +185,7 @@ export function Popup({ onOpenOptions }: { onOpenOptions: () => void }) {
           message={selected}
           showAccount={accounts.length > 1}
           onBack={() => setSelected(null)}
+          onOpenThread={onOpenThread}
         />
       </div>
     );

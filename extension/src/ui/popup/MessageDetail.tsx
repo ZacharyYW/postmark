@@ -23,10 +23,12 @@ export function MessageDetail({
   message: initial,
   showAccount,
   onBack,
+  onOpenThread,
 }: {
   message: MessageSummary;
   showAccount: boolean;
   onBack: () => void;
+  onOpenThread?: (threadId: string, account: string) => void;
 }) {
   const bus = useBus();
   const [state, setState] = useState<State>({ kind: 'loading' });
@@ -51,10 +53,12 @@ export function MessageDetail({
           <button
             class={s.primarySmall}
             onClick={() =>
-              void bus.send('OPEN_THREAD', {
-                gmailThreadId: m.gmailThreadId ?? '',
-                account: m.senderAccount,
-              })
+              onOpenThread
+                ? onOpenThread(m.gmailThreadId ?? '', m.senderAccount)
+                : void bus.send('OPEN_THREAD', {
+                    gmailThreadId: m.gmailThreadId ?? '',
+                    account: m.senderAccount,
+                  })
             }
           >
             Open in Gmail

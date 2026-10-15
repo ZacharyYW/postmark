@@ -22,6 +22,7 @@ MV3 requirement: the service worker imports `@inboxsdk/core/background.js`, whic
 | Sent-list marks | `Lists.registerThreadRowViewHandler`, `row.getThreadIDIfStableAsync()`, `row.addAttachmentIcon(liveValue)` | `listMarks.ts`, `marks.ts` | the attachment-icon column | no mark |
 | Thread strip | `Conversations.registerMessageViewHandler`, `mv.getSender()`, `mv.getMessageIDAsync()`, `mv.getThreadView().getThreadIDAsync()`, `mv.getBodyElement()` (we insert before it) | `threadStrip.ts`, `ui/components/TrackingStrip.tsx` | message body element | no strip |
 | Toasts | `ButterBar.showMessage / showError` | adapter `toast()` | – | silent |
+| History button | none (plain fixed-position Shadow-DOM host on `document.body`; starts before InboxSDK loads) | `historyLauncher.ts` — iframe of `popup.html?embed=1` (web-accessible; `frame-ancestors` allows Gmail). "Open in Gmail" posts `postmark:open-thread` to the parent, which sets `location.hash` (same account) or opens a new tab (other account) | – | no button; the toolbar popup still works |
 
 ### Scoping rules (multi-account)
 

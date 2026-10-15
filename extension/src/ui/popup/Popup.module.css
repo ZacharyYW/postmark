@@ -5,6 +5,13 @@
   display: flex;
   flex-direction: column;
 }
+/* Inside Gmail's history panel the iframe sets the size. */
+:global(.pm-embed) .app {
+  width: 100%;
+  height: 100vh;
+  min-height: 0;
+  max-height: none;
+}
 .header {
   display: flex;
   align-items: center;

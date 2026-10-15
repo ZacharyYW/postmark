@@ -44,11 +44,13 @@ export function buildManifest(serverUrl: string) {
       (p) => p !== originMatchPattern(serverUrl),
     ),
     web_accessible_resources: [
-      { resources: ['icons/*.svg'], matches: ['https://mail.google.com/*'] },
+      { resources: ['icons/*.svg', 'icons/*.png'], matches: ['https://mail.google.com/*'] },
+      // The in-Gmail tracking history panel embeds the popup page (gmail/historyLauncher.ts).
+      { resources: ['popup.html'], matches: ['https://mail.google.com/*'] },
     ],
     content_security_policy: {
       extension_pages:
-        "script-src 'self'; object-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+        "script-src 'self'; object-src 'self'; base-uri 'none'; frame-ancestors 'self' https://mail.google.com",
     },
     minimum_chrome_version: '116',
   });
