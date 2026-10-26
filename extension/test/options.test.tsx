@@ -85,7 +85,7 @@ describe('options page', () => {
       target: { value: 'me@x.com' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Register' }));
-    await screen.findByText(/permission/);
+    await screen.findByText(/permission/i);
     expect(calls.some((c) => c.type === 'REGISTER')).toBe(false);
   });
 

@@ -14,9 +14,14 @@ import {
   type TrackingEvent,
 } from '@postmark/shared';
 import { HandlerError, type HandlerContext, type Handlers } from '../bus/router';
-import { DEFAULT_SERVER_URL } from '../config';
+import { DEFAULT_SERVER_URL, IS_FIREFOX } from '../config';
 import { ApiClient } from './api';
-import { planNotifications, summarizeQueue, type NotificationSpec } from './notify';
+import {
+  notificationOptions,
+  planNotifications,
+  summarizeQueue,
+  type NotificationSpec,
+} from './notify';
 import {
   POLL_ALARM,
   REMINDER_ALARM_PREFIX,
@@ -260,14 +265,10 @@ export class PostmarkService {
         await setLocal({ notifTargets: Object.fromEntries(entries) });
       });
     }
-    await chrome.notifications.create(spec.id, {
-      type: 'basic',
-      iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
-      title: spec.title,
-      message: spec.message,
-      ...(spec.contextMessage !== undefined && { contextMessage: spec.contextMessage }),
-      priority: 0,
-    });
+    await chrome.notifications.create(
+      spec.id,
+      notificationOptions(spec, chrome.runtime.getURL('icons/icon-128.png'), IS_FIREFOX),
+    );
   }
 
   async onNotificationClicked(id: string): Promise<void> {

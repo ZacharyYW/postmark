@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import type { AccountInfo, GlobalSettings, QuietHours } from '@postmark/shared';
 import { useBus } from '../busContext';
+import { PermissionsBanner } from '../components/PermissionsBanner';
+import { browserHostPermissions, originPattern, type HostPermissions } from '../permissions';
 import s from './Options.module.css';
 
 type Msg = { kind: 'ok' | 'err'; text: string } | null;
@@ -20,11 +22,13 @@ function Note({ msg }: { msg: Msg }) {
 export interface OptionsProps {
   /** Ask Chrome for host permission to a custom server origin (must run in a user gesture). */
   requestHostPermission?: (origin: string) => Promise<boolean>;
+  /** Checks/requests the Gmail + server host permissions (the user can withhold them on Firefox). */
+  hostPermissions?: HostPermissions;
 }
 
 const defaultRequest = async (origin: string) => {
   try {
-    const pattern = `${new URL(origin).protocol}//${new URL(origin).hostname}/*`;
+    const pattern = originPattern(origin);
     if (await chrome.permissions.contains({ origins: [pattern] })) return true;
     return await chrome.permissions.request({ origins: [pattern] });
   } catch {
@@ -32,7 +36,10 @@ const defaultRequest = async (origin: string) => {
   }
 };
 
-export function Options({ requestHostPermission = defaultRequest }: OptionsProps) {
+export function Options({
+  requestHostPermission = defaultRequest,
+  hostPermissions = browserHostPermissions,
+}: OptionsProps) {
   const bus = useBus();
   const [auth, setAuth] = useState<{
     loggedIn: boolean;
@@ -82,6 +89,15 @@ export function Options({ requestHostPermission = defaultRequest }: OptionsProps
       </div>
 
       {auth && (
+        <PermissionsBanner
+          key={auth.serverUrl}
+          serverUrl={auth.serverUrl}
+          permissions={hostPermissions}
+          onGranted={refresh}
+        />
+      )}
+
+      {auth && (
         <ConnectionCard
           auth={auth}
           onChange={refresh}
@@ -116,7 +132,9 @@ export function Options({ requestHostPermission = defaultRequest }: OptionsProps
 
           <section class={s.card} aria-labelledby="notif-h">
             <h2 id="notif-h">Notifications</h2>
-            <p>Desktop notifications from Chrome. Per-account switches above take precedence.</p>
+            <p>
+              Desktop notifications from your browser. Per-account switches above take precedence.
+            </p>
             <Check
               label="First open of an email"
               checked={settings.notifyFirstOpen}
@@ -247,7 +265,7 @@ function ConnectionCard({
   const ensureServer = async (): Promise<string | null> => {
     const trimmed = server.trim();
     if (!(await requestHostPermission(trimmed))) {
-      setMsg({ kind: 'err', text: 'Chrome permission to contact that server was not granted.' });
+      setMsg({ kind: 'err', text: 'Permission to contact that server was not granted.' });
       return null;
     }
     return trimmed;

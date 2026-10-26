@@ -23,7 +23,9 @@ const log = (msg: string) => {
 };
 
 if (!env.EXTENSION_IDS) {
-  log('EXTENSION_IDS is empty: CORS accepts any chrome-extension:// origin (dev mode).');
+  log(
+    'EXTENSION_IDS is empty: CORS accepts any chrome-extension:// or moz-extension:// origin (dev mode).',
+  );
 }
 if (env.DEV_ALLOW_TOKEN_ROTATION) {
   log('DEV_ALLOW_TOKEN_ROTATION is on: anyone can re-register an existing email. Dev only!');

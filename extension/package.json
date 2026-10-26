@@ -1,17 +1,22 @@
 {
   "name": "@postmark/extension",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run build:chrome && npm run build:firefox",
+    "build:chrome": "vite build",
+    "build:firefox": "TARGET_BROWSER=firefox vite build",
+    "lint:firefox": "web-ext lint -s dist/firefox",
+    "run:firefox": "web-ext run -s dist/firefox --start-url https://mail.google.com",
+    "sign:firefox": "web-ext sign -s dist/firefox --channel=unlisted -a dist/xpi",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
   "dependencies": {
     "@inboxsdk/core": "2.2.27",
-    "@postmark/shared": "0.2.0",
+    "@postmark/shared": "0.2.1",
     "preact": "10.29.8",
     "zod": "3.25.76"
   },
@@ -20,6 +25,7 @@
     "@preact/preset-vite": "2.10.6",
     "@testing-library/preact": "3.2.4",
     "@types/chrome": "0.0.332",
-    "jsdom": "26.1.0"
+    "jsdom": "26.1.0",
+    "web-ext": "10.8.0"
   }
 }

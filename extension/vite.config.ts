@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
-import { buildManifest } from './manifest.config';
+import { buildManifest, DEV_GECKO_ID, type TargetBrowser } from './manifest.config';
 
 const require = createRequire(import.meta.url);
 
@@ -22,14 +22,17 @@ function inboxSdkPageWorld(): Plugin {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, resolve(__dirname, '..'), 'VITE_');
   const server = env.VITE_POSTMARK_SERVER || 'http://localhost:8787';
+  const browser: TargetBrowser = process.env.TARGET_BROWSER === 'firefox' ? 'firefox' : 'chrome';
+  const manifest = buildManifest(server, browser, env.VITE_GECKO_ID || DEV_GECKO_ID);
   return {
     envDir: resolve(__dirname, '..'),
-    plugins: [preact(), crx({ manifest: buildManifest(server) }), inboxSdkPageWorld()],
+    define: { 'import.meta.env.VITE_TARGET_BROWSER': JSON.stringify(browser) },
+    plugins: [preact(), crx({ manifest, browser }), inboxSdkPageWorld()],
     build: {
-      outDir: 'dist',
+      outDir: `dist/${browser}`,
       emptyOutDir: true,
       sourcemap: false,
-      target: 'chrome116',
+      target: browser === 'firefox' ? 'firefox140' : 'chrome116',
       rollupOptions: {
         input: {
           popup: resolve(__dirname, 'popup.html'),

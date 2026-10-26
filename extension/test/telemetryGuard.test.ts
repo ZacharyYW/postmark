@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { blockedLog, installTelemetryGuard, isBlockedUrl } from '../src/gmail/telemetryGuard';
 
+const XMLHttpRequestBefore = globalThis.XMLHttpRequest;
+
 describe('InboxSDK telemetry guard', () => {
   it.each([
     ['https://api.inboxsdk.com/api/v2/errors', true],
@@ -13,7 +15,15 @@ describe('InboxSDK telemetry guard', () => {
   ])('%s → %s', (url, blocked) => expect(isBlockedUrl(url)).toBe(blocked));
 
   it('blocked XHRs are answered locally with 200 (no network, no error noise)', async () => {
-    installTelemetryGuard(window as Window & typeof globalThis);
+    // A second target stands in for Firefox's Xray `window`, which InboxSDK reads explicitly.
+    const xrayWindow = { XMLHttpRequest, fetch } as {
+      XMLHttpRequest: typeof XMLHttpRequest;
+      fetch: typeof fetch;
+    };
+    installTelemetryGuard(window as Window & typeof globalThis, [window, xrayWindow]);
+    expect(xrayWindow.XMLHttpRequest).toBe(window.XMLHttpRequest);
+    expect(xrayWindow.fetch).toBe(window.fetch);
+    expect(xrayWindow.XMLHttpRequest).not.toBe(XMLHttpRequestBefore);
     const xhr = new XMLHttpRequest();
     const result = await new Promise<{ status: number; text: string }>((resolve, reject) => {
       xhr.onerror = () => reject(new Error('should not error'));

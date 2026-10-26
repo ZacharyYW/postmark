@@ -1,8 +1,8 @@
 # Postmark
 
-Probabilistic read receipts and link-click tracking for Gmail: a Chrome (MV3) extension plus a small self-hosted server.
+Probabilistic read receipts and link-click tracking for Gmail: an MV3 extension for Chrome and Firefox plus a small self-hosted server.
 
-> **Status: v0.2.0.** Verified end-to-end in live Gmail with the server on Cloudflare Workers (free, 24/7).
+> **Status: v0.2.1.** Verified end-to-end in live Gmail with the server on Cloudflare Workers (free, 24/7).
 
 ## What works / what's flaky / what's next
 
@@ -13,6 +13,7 @@ Probabilistic read receipts and link-click tracking for Gmail: a Chrome (MV3) ex
 
 **Flaky / unverified:**
 - Confirmed in live Gmail: compose eye toggle, tracked sends, real opens and clicks via the Cloudflare deployment, notifications, Sent-list marks, activity history. Edge cases on the [manual checklist](#manual-test-checklist-gmail) (aliases, multi-account, Undo Send, reminders) are covered by tests but worth a manual pass.
+- **Firefox build:** confirmed working in live Gmail on Zen (Firefox 158 base), loaded as a temporary add-on. InboxSDK officially targets Chrome, so re-run the [Firefox checklist](#firefox) after InboxSDK or Firefox upgrades.
 - Open detection is heuristic by nature (MPP, proxy caching, scanners). See [Known limitations](#known-limitations).
 
 **Next:** Google OAuth sign-in via `chrome.identity`, push instead of polling, a background re-bind for sends whose `sent` event was missed, a Gmail-API-based reply check for "no reply" reminders, and optional per-recipient tracking for group emails.
@@ -55,13 +56,14 @@ npm run verify              # typecheck, lint, format check, all tests, both bui
 | `PUBLIC_BASE_URL` | *(origin of each request)* | server: base for pixel/link URLs. **Must be internet-reachable over https for real recipients.** Not needed on Cloudflare. |
 | `ALLOWED_EMAILS` | *(empty = anyone may register)* | server: comma-separated emails allowed to register |
 | `DATABASE_PATH` | `./data/postmark.db` | server |
-| `EXTENSION_IDS` | *(empty = any extension, dev only)* | server CORS |
+| `EXTENSION_IDS` | *(empty = any extension, dev only)* | server CORS: Chrome extension ids and/or Firefox internal UUIDs, comma-separated |
 | `TRUST_PROXY` | `false` | server: honour `X-Forwarded-For` |
 | `DEV_ALLOW_TOKEN_ROTATION` | `false` | server: dev only |
 | `APPLE_MPP_CIDRS` | `17.0.0.0/8` | server: Apple MPP egress ranges |
 | `IP_HASH_SALT` | *(random, stored in DB)* | server |
 | `RETENTION_DAYS` | `0` (keep) | server: delete tracked messages and events older than N days |
 | `VITE_POSTMARK_SERVER` | `http://localhost:8787` | extension build: default server URL (changeable in Options) |
+| `VITE_GECKO_ID` | `postmark-dev@postmark.local` | Firefox build: add-on id (use your own, e.g. `postmark@yourdomain`, before signing) |
 | `VITE_INBOXSDK_APP_ID` | `sdk_POSTMARK_DEV_PLACEHOLDER` | extension build: register a free id at <https://www.inboxsdk.com/register> |
 
 ## Run the server
@@ -76,17 +78,32 @@ docker compose up --build                # data persisted in the postmark-data v
 
 `GET /healthz` returns `{"ok":true}`.
 
-In production, put the server behind an https reverse proxy and set `TRUST_PROXY=true`. Without it (for example plain Docker port mapping), every request appears to come from one IP, which weakens dedupe and the unique-open counts. Set `EXTENSION_IDS` to your extension id so CORS accepts only it.
+In production, put the server behind an https reverse proxy and set `TRUST_PROXY=true`. Without it (for example plain Docker port mapping), every request appears to come from one IP, which weakens dedupe and the unique-open counts. Set `EXTENSION_IDS` to your extension id so CORS accepts only it. For Firefox, add the add-on's **Internal UUID** (about:debugging → This Firefox → Postmark). Firefox generates it per install, so update it after reinstalling.
 
 ## Build and load the extension
 
 ```bash
-npm run build -w extension               # → extension/dist
+npm run build -w extension               # → extension/dist/chrome and extension/dist/firefox
+npm run build:chrome -w extension        # or just one target
 ```
 
-1. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and select `extension/dist`.
+### Chrome
+
+1. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and select `extension/dist/chrome`.
 2. The options page opens. Enter an email and click **Register**, or use **Connect with an existing token** (see the demo below).
 3. Open Gmail and reload the tab.
+
+### Firefox
+
+Needs Firefox 140 or later (ESR 140 works).
+
+- **Try it:** `npm run run:firefox -w extension` starts a throwaway Firefox profile with the add-on loaded and Gmail open. Or open `about:debugging` → **This Firefox** → **Load Temporary Add-on…** and pick `extension/dist/firefox/manifest.json`. Temporary add-ons are removed when Firefox quits.
+- **Install permanently (self-signed, unlisted):** release Firefox only installs signed add-ons. Signing an *unlisted* add-on is free, automatic and doesn't publish anything:
+  1. Set `VITE_GECKO_ID=postmark@<something-you-own>` in `.env` and rebuild (`npm run build:firefox -w extension`). The id must stay the same across versions.
+  2. Create API credentials at <https://addons.mozilla.org/developers/addon/api/key/>.
+  3. `WEB_EXT_API_KEY=… WEB_EXT_API_SECRET=… npm run sign:firefox -w extension`. The signed `.xpi` lands in `extension/dist/xpi/`. Open it in Firefox to install.
+  4. Bump `version` in `extension/package.json` before signing again: AMO rejects a version it has already signed.
+- **Permissions:** Firefox lets you withhold or revoke the Gmail and server permissions (about:addons → Postmark → Permissions). If one is missing, Options and the popup show a banner with a one-click fix.
 
 For tracking with real recipients the server must be reachable from the internet over https. See [Deploy for free on Cloudflare](#deploy-for-free-on-cloudflare-recommended-247-permanent-address).
 
@@ -167,6 +184,13 @@ Before you start: the server is running, the extension is loaded, you're signed 
 - [ ] Quiet hours (Options) hold notifications and show a summary afterwards.
 - [ ] To test reminders quickly, create one, then in the SW console run `chrome.alarms.create('pm-rem:<id>', {when: Date.now()+1000})`.
 
+**Firefox**<a id="firefox"></a> (repeat the compose, Sent-list and notification checks above, then:)
+- [ ] The eye icon, Sent-list marks and Tracking strip all appear. If none of them do, check the Gmail tab's console for "InboxSDK failed to load" (see `docs/GMAIL_INTEGRATION.md`).
+- [ ] DevTools → Network on the Gmail tab shows **no** requests to `api.inboxsdk.com`: the telemetry guard works in Firefox's content-script sandbox.
+- [ ] Notifications show the "via account" line inside the message text.
+- [ ] Revoke "Access your data for mail.google.com" in about:addons. The popup and Options show the permission banner, and **Grant access** restores it.
+- [ ] Quit and restart Firefox: polling and reminders resume (event page, not a service worker).
+
 **Popup & options states**
 - [ ] Signed out shows "Sign in to Postmark". Server stopped shows "Can't reach your Postmark server". A new user with no data shows "No tracked emails yet".
 - [ ] Dark mode (OS setting) is applied to the popup, options page and Gmail strip.
@@ -191,4 +215,4 @@ Before you start: the server is running, the extension is loaded, you're signed 
 
 ## Future work (out of scope for v1)
 
-Mail merge, scheduled send, snooze, templates, Outlook/Yahoo support, team accounts, billing, Firefox/Safari builds, OAuth sign-in, a server-side retention policy, push instead of polling.
+Mail merge, scheduled send, snooze, templates, Outlook/Yahoo support, team accounts, billing, Safari build, Firefox for Android, OAuth sign-in, a server-side retention policy, push instead of polling.

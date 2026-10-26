@@ -9,7 +9,9 @@ import {
   type Reminder,
 } from '@postmark/shared';
 import { useBus, usePrefs } from '../busContext';
+import { PermissionsBanner } from '../components/PermissionsBanner';
 import { StatusBadge } from '../components/StatusBadge';
+import type { HostPermissions } from '../permissions';
 import { lastEventLabel, recipientsLabel } from '../format';
 import { MessageDetail } from './MessageDetail';
 import s from './Popup.module.css';
@@ -35,8 +37,11 @@ function isOffline(e: BusError) {
 export function Popup({
   onOpenOptions,
   onOpenThread,
+  hostPermissions,
 }: {
   onOpenOptions: () => void;
+  /** Host-permission checks (defaults to the browser's; Firefox users can withhold them). */
+  hostPermissions?: HostPermissions;
   /** Overrides "Open in Gmail" (the in-Gmail panel navigates its own tab instead). */
   onOpenThread?: (threadId: string, account: string) => void;
 }) {
@@ -194,6 +199,11 @@ export function Popup({
   return (
     <div class={s.app}>
       {header}
+      <PermissionsBanner
+        serverUrl={auth.serverUrl}
+        onGrant={onOpenOptions}
+        {...(hostPermissions && { permissions: hostPermissions })}
+      />
       <div class={s.tabs} role="tablist" aria-label="Views">
         <button
           role="tab"

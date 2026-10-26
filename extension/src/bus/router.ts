@@ -69,6 +69,8 @@ export async function dispatch(
   message: unknown,
   sender: SenderLike,
   extensionId: string,
+  /** Our pages' URL prefix: `chrome.runtime.getURL('')`. Firefox uses a per-install UUID here, not the id. */
+  extensionBaseUrl = `chrome-extension://${extensionId}/`,
 ): Promise<BusResult<unknown>> {
   if (!isBusEnvelope(message)) {
     return { ok: false, error: { code: 'VALIDATION', message: 'Not a Postmark message' } };
@@ -79,7 +81,7 @@ export async function dispatch(
   // Extension pages (popup, options — even when opened in a tab) have our own origin;
   // anything else is a content script running inside a web page (Gmail).
   const fromExtensionPage =
-    typeof sender.url === 'string' && sender.url.startsWith(`chrome-extension://${extensionId}/`);
+    typeof sender.url === 'string' && sender.url.startsWith(extensionBaseUrl);
   if (!fromExtensionPage && !CONTENT_SCRIPT_TYPES.has(message.type)) {
     return {
       ok: false,
@@ -102,14 +104,14 @@ export async function dispatch(
 }
 
 /** chrome.runtime.onMessage listener. Returns true to keep the channel open for async replies. */
-export function createRouter(handlers: Handlers, extensionId: string) {
+export function createRouter(handlers: Handlers, extensionId: string, extensionBaseUrl: string) {
   return (
     message: unknown,
     sender: chrome.runtime.MessageSender,
     sendResponse: (r: BusResult<unknown>) => void,
   ): boolean | undefined => {
     if (!isBusEnvelope(message)) return undefined; // not ours (e.g. InboxSDK's own messages)
-    void dispatch(handlers, message, sender, extensionId).then(sendResponse);
+    void dispatch(handlers, message, sender, extensionId, extensionBaseUrl).then(sendResponse);
     return true;
   };
 }
