@@ -34,7 +34,12 @@ export function isBlockedUrl(raw: string, base = 'https://mail.google.com/'): bo
 let installed = false;
 export const blockedLog: string[] = [];
 
-export function installTelemetryGuard(win: Window & typeof globalThis = window): void {
+// Patch `globalThis`, not `window`: in Chrome they are the same object, but a Firefox content
+// script runs in a sandbox whose own XMLHttpRequest/fetch (the ones InboxSDK's bundled code
+// resolves) live on the sandbox global, while `window` is an Xray view of the page's window.
+export function installTelemetryGuard(
+  win: Window & typeof globalThis = globalThis as Window & typeof globalThis,
+): void {
   if (installed) return;
   installed = true;
 

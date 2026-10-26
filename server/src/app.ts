@@ -34,7 +34,12 @@ const GMAIL_ORIGIN = 'https://mail.google.com';
 
 export function isAllowedOrigin(origin: string, extensionIds: string[]): boolean {
   if (origin === GMAIL_ORIGIN) return true;
-  const m = /^chrome-extension:\/\/([a-p]{32})$/.exec(origin);
+  // Chrome ids are stable; Firefox origins carry a random per-install UUID (see DECISIONS D-032).
+  const m =
+    /^chrome-extension:\/\/([a-p]{32})$/.exec(origin) ??
+    /^moz-extension:\/\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(
+      origin,
+    );
   if (!m?.[1]) return false;
   return extensionIds.length === 0 || extensionIds.includes(m[1]);
 }
@@ -62,7 +67,7 @@ export function createApp(opts: AppOptions): CreatedApp {
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
   const extensionIds = env.EXTENSION_IDS.split(',')
-    .map((s) => s.trim())
+    .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
 
   const getIp = (c: Context<AppEnv>): string => {

@@ -14,7 +14,7 @@ const EnvSchema = z.object({
   /** Comma-separated emails allowed to register. Empty = open registration. */
   ALLOWED_EMAILS: z.string().default(''),
   DATABASE_PATH: z.string().default('./data/postmark.db'),
-  /** Comma-separated extension ids allowed for CORS (chrome-extension://<id>). Empty = any extension origin (dev only). */
+  /** Comma-separated extension ids allowed for CORS: Chrome ids and/or Firefox internal UUIDs. Empty = any extension origin (dev only). */
   EXTENSION_IDS: z.string().default(''),
   /** Trust X-Forwarded-For (only when behind a reverse proxy you control). */
   TRUST_PROXY: bool,

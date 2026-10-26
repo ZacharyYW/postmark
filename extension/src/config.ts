@@ -6,3 +6,6 @@ export const DEFAULT_SERVER_URL = (
 export const INBOXSDK_DEV_PLACEHOLDER = 'sdk_POSTMARK_DEV_PLACEHOLDER';
 /** Register a real app id at https://www.inboxsdk.com/register and set VITE_INBOXSDK_APP_ID. */
 export const INBOXSDK_APP_ID = import.meta.env.VITE_INBOXSDK_APP_ID || INBOXSDK_DEV_PLACEHOLDER;
+
+/** Build target (vite.config.ts defines it); undefined in tests, i.e. Chrome behaviour. */
+export const IS_FIREFOX = import.meta.env.VITE_TARGET_BROWSER === 'firefox';

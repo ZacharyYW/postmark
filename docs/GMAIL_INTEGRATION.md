@@ -47,3 +47,10 @@ MV3 requirement: the service worker imports `@inboxsdk/core/background.js`, whic
 3. Check that the page-world script loaded: in the Gmail console, look for InboxSDK's own logs. A missing `pageWorld.js` produces an InboxSDK error mentioning `inboxsdk__injectPageWorld`.
 4. If compose tracking silently doesn't happen, check the popup's sign-in state, the server URL host permission (Options → Save server), and the `prepare failed` log line.
 5. After a Gmail UI change breaks something: upgrade `@inboxsdk/core` first. Streak ships fixes quickly, and our code depends only on its public API.
+
+## Firefox
+
+- The background is an event page on Firefox, not a service worker. Inspect it from `about:debugging` → This Firefox → Postmark → **Inspect**. `chrome.storage.*` calls work there unchanged.
+- `@inboxsdk/core/background.js` injects `pageWorld.js` with `chrome.scripting.executeScript({ world: 'MAIN' })` (Firefox ≥ 128). Firefox's `MessageSender` has no `documentId`, so the helper targets by `frameIds`. If the Gmail console shows an InboxSDK error about `inboxsdk__injectPageWorld`, check that the add-on has the `mail.google.com` permission (about:addons → Permissions).
+- Content scripts run in a sandbox: `window` is an Xray view of the page and the script's own `XMLHttpRequest`/`fetch` live on `globalThis`. `telemetryGuard.ts` patches `globalThis` for that reason. Confirm in the Network panel that nothing goes to `api.inboxsdk.com`.
+- InboxSDK officially targets Chrome. If a Firefox release breaks it, the fallback is a DOM-observer `GmailAdapter` behind `adapter.ts`; nothing outside `inboxsdkAdapter.ts` needs to change.

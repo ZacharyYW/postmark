@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AccountInfo, EventsRes, MessageSummary, Reminder } from '@postmark/shared';
 import { BASE, createMessage, makeCtx, pixel, UA } from './helpers';
+import { isAllowedOrigin } from '../src/app';
 
 const json = async <T>(r: Response) => (await r.json()) as T;
 
@@ -609,12 +610,30 @@ describe('cross-cutting', () => {
     for (const origin of [
       'https://evil.com',
       'chrome-extension://pppppppppppppppppppppppppppppppp',
+      'moz-extension://0b9c3f1e-2d4a-4c6b-9e8f-1a2b3c4d5e6f',
     ]) {
       const bad = await ctx.req('/v1/me', {
         method: 'OPTIONS',
         headers: { Origin: origin, 'Access-Control-Request-Method': 'GET' },
       });
       expect(bad.headers.get('access-control-allow-origin')).toBeNull();
+    }
+  });
+
+  it('CORS accepts Firefox moz-extension origins (any in dev, allowlisted UUIDs otherwise)', () => {
+    const uuid = '0b9c3f1e-2d4a-4c6b-9e8f-1a2b3c4d5e6f';
+    expect(isAllowedOrigin(`moz-extension://${uuid}`, [])).toBe(true);
+    expect(isAllowedOrigin(`moz-extension://${uuid}`, [uuid])).toBe(true);
+    expect(isAllowedOrigin(`moz-extension://${uuid}`, ['abcdefghijklmnopabcdefghijklmnop'])).toBe(
+      false,
+    );
+    for (const bad of [
+      'moz-extension://not-a-uuid',
+      `moz-extension://${uuid}/`,
+      `moz-extension://${uuid.toUpperCase()}`,
+      `http://${uuid}`,
+    ]) {
+      expect(isAllowedOrigin(bad, [])).toBe(false);
     }
   });
 

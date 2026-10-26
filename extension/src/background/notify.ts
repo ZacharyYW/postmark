@@ -17,6 +17,30 @@ export interface NotificationSpec {
   account: string | null;
 }
 
+/**
+ * chrome.notifications options for a spec. Firefox only renders title + message (it ignores
+ * `contextMessage` and `priority`), so the context line (e.g. "via you@work.com") is folded
+ * into the message there.
+ */
+export function notificationOptions(
+  spec: NotificationSpec,
+  iconUrl: string,
+  firefox: boolean,
+): chrome.notifications.NotificationCreateOptions {
+  const base = { type: 'basic' as const, iconUrl, title: spec.title };
+  if (firefox) {
+    const message =
+      spec.contextMessage !== undefined ? `${spec.message}\n${spec.contextMessage}` : spec.message;
+    return { ...base, message };
+  }
+  return {
+    ...base,
+    message: spec.message,
+    ...(spec.contextMessage !== undefined && { contextMessage: spec.contextMessage }),
+    priority: 0,
+  };
+}
+
 export interface PlanContext {
   resolve: (account: string) => ResolvedSettings;
   /** Name the account in notifications only when more than one is known (spec 6.5). */

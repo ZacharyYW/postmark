@@ -7,7 +7,16 @@ export function originMatchPattern(url: string): string {
   return `${u.protocol}//${u.hostname}/*`;
 }
 
-export function buildManifest(serverUrl: string) {
+export type TargetBrowser = 'chrome' | 'firefox';
+
+export const DEV_GECKO_ID = 'postmark-dev@postmark.local';
+
+export function buildManifest(
+  serverUrl: string,
+  browser: TargetBrowser = 'chrome',
+  geckoId: string = DEV_GECKO_ID,
+) {
+  const firefox = browser === 'firefox';
   return defineManifest({
     manifest_version: 3,
     name: 'Postmark — read receipts for Gmail',
@@ -26,8 +35,16 @@ export function buildManifest(serverUrl: string) {
       default_popup: 'popup.html',
       default_icon: { '16': 'icons/icon-16.png', '32': 'icons/icon-32.png' },
     },
-    options_page: 'options.html',
-    background: { service_worker: 'src/background/index.ts', type: 'module' },
+    // Firefox has no `options_page` and runs the background as an event page, not a service worker.
+    ...(firefox
+      ? {
+          options_ui: { page: 'options.html', open_in_tab: true },
+          background: { scripts: ['src/background/index.ts'], type: 'module' },
+        }
+      : {
+          options_page: 'options.html',
+          background: { service_worker: 'src/background/index.ts', type: 'module' },
+        }),
     content_scripts: [
       {
         matches: ['https://mail.google.com/*'],
@@ -52,6 +69,18 @@ export function buildManifest(serverUrl: string) {
       extension_pages:
         "script-src 'self'; object-src 'self'; base-uri 'none'; frame-ancestors 'self' https://mail.google.com",
     },
-    minimum_chrome_version: '116',
+    ...(firefox
+      ? {
+          browser_specific_settings: {
+            gecko: {
+              id: geckoId,
+              // 140 (ESR): data_collection_permissions; also >= 128 for executeScript world 'MAIN'.
+              strict_min_version: '140.0',
+              // Subject, recipients and link URLs go to the user's own server (AMO requires this).
+              data_collection_permissions: { required: ['personalCommunications'] },
+            },
+          },
+        }
+      : { minimum_chrome_version: '116' }),
   });
 }
