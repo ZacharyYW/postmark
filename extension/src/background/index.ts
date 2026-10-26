@@ -7,7 +7,9 @@ import { PostmarkService } from './service';
 const service = new PostmarkService();
 
 // Listeners must be registered synchronously at top level so MV3 wakes the worker for them.
-chrome.runtime.onMessage.addListener(createRouter(service.handlers(), chrome.runtime.id));
+chrome.runtime.onMessage.addListener(
+  createRouter(service.handlers(), chrome.runtime.id, chrome.runtime.getURL('')),
+);
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === POLL_ALARM) {

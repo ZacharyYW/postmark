@@ -93,6 +93,33 @@ describe('bus router', () => {
     expect(ctxSeen).toEqual({ tabId: undefined, fromExtensionPage: true });
   });
 
+  it('Firefox: extension pages are recognised by their moz-extension:// base URL', async () => {
+    const base = 'moz-extension://0b9c3f1e-2d4a-4c6b-9e8f-1a2b3c4d5e6f/';
+    const geckoId = 'postmark@example.com';
+    const h = handlers({ CONNECT_TOKEN: async () => ({ email: 'me@x.com' }) });
+    const msg = { __postmark: 1, type: 'CONNECT_TOKEN', payload: {} };
+    const fromOptions = await dispatch(
+      h,
+      msg,
+      { id: geckoId, tab: { id: 5 }, url: `${base}options.html` },
+      geckoId,
+      base,
+    );
+    expect(fromOptions.ok).toBe(true);
+    const fromOtherAddon = await dispatch(
+      h,
+      msg,
+      {
+        id: geckoId,
+        tab: { id: 5 },
+        url: 'moz-extension://ffffffff-2d4a-4c6b-9e8f-1a2b3c4d5e6f/x',
+      },
+      geckoId,
+      base,
+    );
+    expect(fromOtherAddon.ok).toBe(false);
+  });
+
   it('a content script cannot spoof an extension-page URL of another extension', async () => {
     const r = await dispatch(
       handlers({ DELETE_ME: async () => ({ ok: true }) }),
