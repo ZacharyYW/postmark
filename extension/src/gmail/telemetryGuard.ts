@@ -34,11 +34,24 @@ export function isBlockedUrl(raw: string, base = 'https://mail.google.com/'): bo
 let installed = false;
 export const blockedLog: string[] = [];
 
-// Patch `globalThis`, not `window`: in Chrome they are the same object, but a Firefox content
-// script runs in a sandbox whose own XMLHttpRequest/fetch (the ones InboxSDK's bundled code
-// resolves) live on the sandbox global, while `window` is an Xray view of the page's window.
+type FetchHost = { XMLHttpRequest: typeof XMLHttpRequest; fetch: typeof fetch };
+
+/**
+ * Where the guard must be installed. In Chrome the content script's `window` *is* its global.
+ * In a Firefox content script they differ: the global is a sandbox, and `window` is an Xray
+ * view of Gmail's window. InboxSDK reads `window.XMLHttpRequest` explicitly, while bare `fetch`
+ * resolves on the sandbox, so both are patched. Assignments to the Xray are expandos that only
+ * our content script sees; Gmail's own scripts are unaffected.
+ */
+function contentScriptGlobals(): FetchHost[] {
+  const out: FetchHost[] = [globalThis];
+  if (typeof window !== 'undefined' && (window as unknown) !== globalThis) out.push(window);
+  return out;
+}
+
 export function installTelemetryGuard(
   win: Window & typeof globalThis = globalThis as Window & typeof globalThis,
+  targets: FetchHost[] = contentScriptGlobals(),
 ): void {
   if (installed) return;
   installed = true;
@@ -92,11 +105,10 @@ export function installTelemetryGuard(
       return this.pmBlocked ? this.responseText : super.response;
     }
   }
-  win.XMLHttpRequest = GuardedXHR;
-
   const origFetch = win.fetch?.bind(win);
-  if (origFetch) {
-    win.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+  const guardedFetch =
+    origFetch &&
+    ((input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       if (isBlockedUrl(url)) {
         blockedLog.push(url.split('?')[0] ?? '');
@@ -108,6 +120,9 @@ export function installTelemetryGuard(
         );
       }
       return origFetch(input, init);
-    };
+    });
+  for (const t of targets) {
+    t.XMLHttpRequest = GuardedXHR;
+    if (guardedFetch) t.fetch = guardedFetch;
   }
 }
