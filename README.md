@@ -13,7 +13,7 @@ Probabilistic read receipts and link-click tracking for Gmail: an MV3 extension 
 
 **Flaky / unverified:**
 - Confirmed in live Gmail: compose eye toggle, tracked sends, real opens and clicks via the Cloudflare deployment, notifications, Sent-list marks, activity history. Edge cases on the [manual checklist](#manual-test-checklist-gmail) (aliases, multi-account, Undo Send, reminders) are covered by tests but worth a manual pass.
-- **Firefox build:** builds, passes `web-ext lint` and the shared test suite, but has **not yet been verified in live Gmail**. InboxSDK officially targets Chrome, so run the [Firefox checklist](#firefox) before relying on it.
+- **Firefox build:** confirmed working in live Gmail on Zen (Firefox 158 base), loaded as a temporary add-on. InboxSDK officially targets Chrome, so re-run the [Firefox checklist](#firefox) after InboxSDK or Firefox upgrades.
 - Open detection is heuristic by nature (MPP, proxy caching, scanners). See [Known limitations](#known-limitations).
 
 **Next:** Google OAuth sign-in via `chrome.identity`, push instead of polling, a background re-bind for sends whose `sent` event was missed, a Gmail-API-based reply check for "no reply" reminders, and optional per-recipient tracking for group emails.
