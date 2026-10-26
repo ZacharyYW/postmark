@@ -2,7 +2,7 @@
 
 Probabilistic read receipts and link-click tracking for Gmail: an MV3 extension for Chrome and Firefox plus a small self-hosted server.
 
-> **Status: v0.2.0.** Verified end-to-end in live Gmail with the server on Cloudflare Workers (free, 24/7).
+> **Status: v0.2.1.** Verified end-to-end in live Gmail with the server on Cloudflare Workers (free, 24/7).
 
 ## What works / what's flaky / what's next
 
