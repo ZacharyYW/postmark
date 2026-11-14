@@ -2,7 +2,7 @@
 
 Probabilistic read receipts and link-click tracking for Gmail: an MV3 extension for Chrome and Firefox plus a small self-hosted server.
 
-> **Status: v0.2.1.** Verified end-to-end in live Gmail with the server on Cloudflare Workers (free, 24/7).
+> **Status: v0.2.2.** Verified end-to-end in live Gmail with the server on Cloudflare Workers (free, 24/7).
 
 ## What works / what's flaky / what's next
 
@@ -106,6 +106,24 @@ Needs Firefox 140 or later (ESR 140 works).
   3. `WEB_EXT_API_KEY=… WEB_EXT_API_SECRET=… npm run sign:firefox -w extension`. The signed `.xpi` lands in `extension/dist/xpi/`. Open it in Firefox to install.
   4. Bump `version` in `extension/package.json` before signing again: AMO rejects a version it has already signed.
 - **Permissions:** Firefox lets you withhold or revoke the Gmail and server permissions (about:addons → Postmark → Permissions). If one is missing, Options and the popup show a banner with a one-click fix.
+
+### Updating to a new version
+
+An extension loaded from a cloned folder never updates itself. After new changes land on `main`, run this from your clone:
+
+```bash
+git pull
+npm install                 # picks up any dependency changes; harmless otherwise
+npm run build -w extension
+```
+
+Then reload the extension:
+
+- **Chrome:** `chrome://extensions` → click ↻ on Postmark, then reload your Gmail tabs. Your sign-in and settings are kept.
+- **Firefox, temporary add-on:** `about:debugging` → **This Firefox** → **Reload** on Postmark.
+- **Firefox, signed XPI:** bump `version` in `extension/package.json` if the release didn't already, run `npm run sign:firefox -w extension` again, and open the new `.xpi`.
+
+Check the version shown on `chrome://extensions` (or `about:addons`) to confirm you're on the new build. Your `.env` isn't touched by `git pull`, so your default server URL stays the same. Server changes are deployed separately (see [Maintenance](#maintenance)); a release that only changes the extension doesn't need a redeploy.
 
 For tracking with real recipients the server must be reachable from the internet over https. See [Deploy for free on Cloudflare](#deploy-for-free-on-cloudflare-recommended-247-permanent-address).
 
