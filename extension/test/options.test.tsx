@@ -48,6 +48,9 @@ function scripted(loggedIn: boolean) {
       state.loggedIn = true;
       return { email: 'seed@x.com' };
     },
+    GET_CONNECTION_STRING: () => ({
+      connectionString: 'tok_abcdefghijklmnopqrstuvwxyz@https://pm.example.dev',
+    }),
     LOGOUT: () => {
       state.loggedIn = false;
       return { ok: true as const };
@@ -93,11 +96,54 @@ describe('options page', () => {
     const { client } = scripted(false);
     mount(client);
     await screen.findByText(/Not signed in/);
-    fireEvent.input(screen.getByLabelText(/Token/), {
+    fireEvent.input(screen.getByLabelText(/Connection string or token/), {
       target: { value: 'tok_abcdefghijklmnopqrstuvwxyz' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
     await screen.findByText('Connected as seed@x.com.');
+  });
+
+  it('connects with a connection string, using its embedded server', async () => {
+    const { client, calls } = scripted(false);
+    mount(client);
+    await screen.findByText(/Not signed in/);
+    fireEvent.input(screen.getByLabelText(/Connection string or token/), {
+      target: { value: '  tok_abcdefghijklmnopqrstuvwxyz@https://pm.example.dev/ ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    await screen.findByText('Connected as seed@x.com.');
+    expect(calls.find((c) => c.type === 'CONNECT_TOKEN')!.payload).toMatchObject({
+      serverUrl: 'https://pm.example.dev',
+    });
+  });
+
+  it('rejects a malformed connection string without calling the worker', async () => {
+    const { client, calls } = scripted(false);
+    mount(client);
+    await screen.findByText(/Not signed in/);
+    fireEvent.input(screen.getByLabelText(/Connection string or token/), {
+      target: { value: 'nope@ftp://x' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    await screen.findByText(/doesn’t look like/);
+    expect(calls.some((c) => c.type === 'CONNECT_TOKEN')).toBe(false);
+  });
+
+  it('reveals and copies the connection string when signed in', async () => {
+    const { client } = scripted(true);
+    const writes: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (t: string) => void writes.push(t) },
+    });
+    mount(client);
+    expect(screen.queryByLabelText('Connect another browser')).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Show connection string' }));
+    const input = (await screen.findByLabelText('Connect another browser')) as HTMLInputElement;
+    expect(input.value).toBe('tok_abcdefghijklmnopqrstuvwxyz@https://pm.example.dev');
+    fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    await screen.findByText(/Copied/);
+    expect(writes).toEqual(['tok_abcdefghijklmnopqrstuvwxyz@https://pm.example.dev']);
   });
 
   it('per-account settings: tri-state selects send overrides or clear them', async () => {

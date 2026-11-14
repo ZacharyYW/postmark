@@ -1,5 +1,10 @@
-import { useCallback, useEffect, useState } from 'preact/hooks';
-import type { AccountInfo, GlobalSettings, QuietHours } from '@postmark/shared';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import {
+  parseConnectionString,
+  type AccountInfo,
+  type GlobalSettings,
+  type QuietHours,
+} from '@postmark/shared';
 import { useBus } from '../busContext';
 import { PermissionsBanner } from '../components/PermissionsBanner';
 import { browserHostPermissions, originPattern, type HostPermissions } from '../permissions';
@@ -243,6 +248,73 @@ function QuietHoursField({
   );
 }
 
+/** Reveals this install's connection string so another browser/computer can sign in with it. */
+function ShareConnection() {
+  const bus = useBus();
+  const [value, setValue] = useState<string | null>(null);
+  const [msg, setMsg] = useState<Msg>(null);
+
+  const reveal = async () => {
+    const r = await bus.send('GET_CONNECTION_STRING', {});
+    if (r.ok) setValue(r.data.connectionString);
+    else setMsg({ kind: 'err', text: r.error.message });
+  };
+
+  const copy = async (input: HTMLInputElement | null) => {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setMsg({ kind: 'ok', text: 'Copied. Paste it into Options on the other install.' });
+    } catch {
+      input?.select();
+      setMsg({ kind: 'err', text: 'Couldn’t copy automatically; it’s selected, press Ctrl/⌘+C.' });
+    }
+  };
+
+  const inputRef = useRef<HTMLInputElement>(null);
+  return (
+    <div class={s.field}>
+      <label for="conn-string">Connect another browser</label>
+      <p class={s.muted}>
+        Paste this into <strong>Connect with a connection string</strong> on another browser or
+        computer to use the same Postmark account there. It works like a password for all your
+        tracking data: don’t share it with anyone else.
+      </p>
+      {value === null ? (
+        <div class={s.inline}>
+          <button class={s.btn} onClick={() => void reveal()}>
+            Show connection string
+          </button>
+        </div>
+      ) : (
+        <div class={s.inline}>
+          <input
+            id="conn-string"
+            ref={inputRef}
+            class={`${s.input} ${s.mono}`}
+            readOnly
+            value={value}
+            onFocus={(e) => (e.target as HTMLInputElement).select()}
+          />
+          <button class={`${s.btn} ${s.primary}`} onClick={() => void copy(inputRef.current)}>
+            Copy
+          </button>
+          <button
+            class={s.btn}
+            onClick={() => {
+              setValue(null);
+              setMsg(null);
+            }}
+          >
+            Hide
+          </button>
+        </div>
+      )}
+      <Note msg={msg} />
+    </div>
+  );
+}
+
 function ConnectionCard({
   auth,
   onChange,
@@ -262,8 +334,8 @@ function ConnectionCard({
 
   useEffect(() => setServer(auth.serverUrl), [auth.serverUrl]);
 
-  const ensureServer = async (): Promise<string | null> => {
-    const trimmed = server.trim();
+  const ensureServer = async (override?: string): Promise<string | null> => {
+    const trimmed = (override ?? server).trim();
     if (!(await requestHostPermission(trimmed))) {
       setMsg({ kind: 'err', text: 'Permission to contact that server was not granted.' });
       return null;
@@ -358,13 +430,23 @@ function ConnectionCard({
             </div>
           </form>
           <details>
-            <summary>Connect with an existing token</summary>
+            <summary>Connect with a connection string from another install</summary>
             <form
               class={s.field}
               onSubmit={(e) => {
                 e.preventDefault();
                 void run(async () => {
-                  const url = await ensureServer();
+                  const parsed = parseConnectionString(token);
+                  if (!parsed) {
+                    setMsg({
+                      kind: 'err',
+                      text: 'That doesn’t look like a Postmark connection string or token.',
+                    });
+                    return;
+                  }
+                  // A connection string carries its own server; use (and show) that one.
+                  if (parsed.serverUrl) setServer(parsed.serverUrl);
+                  const url = await ensureServer(parsed.serverUrl ?? undefined);
                   if (!url) return;
                   const r = await bus.send('CONNECT_TOKEN', { token, serverUrl: url });
                   setMsg(
@@ -377,9 +459,11 @@ function ConnectionCard({
                 });
               }}
             >
-              <label for="token">
-                Token (e.g. printed by <code>npm run seed</code>)
-              </label>
+              <label for="token">Connection string or token</label>
+              <p class={s.muted}>
+                Copy it from <strong>Connect another browser</strong> on an install that’s already
+                signed in (or use the token printed by <code>npm run seed</code>).
+              </p>
               <div class={s.inline}>
                 <input
                   id="token"
@@ -397,28 +481,31 @@ function ConnectionCard({
           </details>
         </>
       ) : (
-        <div class={s.inline}>
-          <button
-            class={s.btn}
-            disabled={busy}
-            onClick={() =>
-              run(async () => {
-                await bus.send('LOGOUT', {});
-                setMsg({ kind: 'ok', text: 'Signed out.' });
-                await onChange();
-              })
-            }
-          >
-            Sign out
-          </button>
-          <button
-            class={`${s.btn} ${s.danger}`}
-            disabled={busy}
-            onClick={() => setConfirmDelete(true)}
-          >
-            Delete my data…
-          </button>
-        </div>
+        <>
+          <ShareConnection />
+          <div class={s.inline}>
+            <button
+              class={s.btn}
+              disabled={busy}
+              onClick={() =>
+                run(async () => {
+                  await bus.send('LOGOUT', {});
+                  setMsg({ kind: 'ok', text: 'Signed out.' });
+                  await onChange();
+                })
+              }
+            >
+              Sign out
+            </button>
+            <button
+              class={`${s.btn} ${s.danger}`}
+              disabled={busy}
+              onClick={() => setConfirmDelete(true)}
+            >
+              Delete my data…
+            </button>
+          </div>
+        </>
       )}
 
       {confirmDelete && (

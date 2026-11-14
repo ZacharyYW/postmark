@@ -235,6 +235,36 @@ describe('polling, notifications and reminders', () => {
     expect(ok).toEqual({ ok: true, data: { email: 'seed@x.com' } });
     await flush();
   });
+
+  it('GET_CONNECTION_STRING round-trips through CONNECT_TOKEN; hidden from Gmail tabs', async () => {
+    const h = createHarness();
+    await chrome.storage.local.set({ serverUrl: SERVER });
+    const reg = await h.server.app.request(`${SERVER}/v1/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'seed@x.com' }),
+    });
+    const { token } = (await reg.json()) as { token: string };
+    const page = h.busFor();
+    expect(await page.send('GET_CONNECTION_STRING', {})).toMatchObject({
+      ok: false,
+      error: { code: 'NOT_AUTHENTICATED' },
+    });
+    await page.send('CONNECT_TOKEN', { token });
+    const res = await page.send('GET_CONNECTION_STRING', {});
+    expect(res).toEqual({ ok: true, data: { connectionString: `${token}@${SERVER}` } });
+    expect(await h.busFor(7).send('GET_CONNECTION_STRING', {})).toMatchObject({ ok: false });
+
+    // A fresh install pointed at another server picks the server up from the string.
+    await page.send('LOGOUT', {});
+    await chrome.storage.local.set({ serverUrl: 'http://elsewhere.test' });
+    expect(await page.send('CONNECT_TOKEN', { token: `${token}@${SERVER}` })).toEqual({
+      ok: true,
+      data: { email: 'seed@x.com' },
+    });
+    expect((await chrome.storage.local.get('serverUrl')).serverUrl).toBe(SERVER);
+    await flush();
+  });
 });
 
 describe('pure helpers', () => {

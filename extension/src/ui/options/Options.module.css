@@ -159,3 +159,8 @@ details summary {
   color: var(--pm-accent);
   margin: 8px 0;
 }
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  flex: 1;
+}

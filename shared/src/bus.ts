@@ -69,8 +69,13 @@ export interface BusMap {
     };
   };
   REGISTER: { req: { email: string; serverUrl?: string }; res: { email: string } };
-  /** Sign in with an existing token (e.g. the one printed by `npm run seed`). */
+  /**
+   * Sign in with a connection string (`<token>@<serverUrl>`, from another install's options page)
+   * or a bare token (e.g. the one printed by `npm run seed`). A server in the string wins.
+   */
   CONNECT_TOKEN: { req: { token: string; serverUrl?: string }; res: { email: string } };
+  /** Extension pages only: the signed-in token + server as one copy-pastable string. */
+  GET_CONNECTION_STRING: { req: Record<string, never>; res: { connectionString: string } };
   LOGOUT: { req: Record<string, never>; res: { ok: true } };
   DELETE_ME: { req: Record<string, never>; res: { ok: true } };
   SET_SERVER_URL: { req: { serverUrl: string }; res: { serverUrl: string } };
