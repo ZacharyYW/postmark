@@ -1,4 +1,6 @@
 import {
+  formatConnectionString,
+  parseConnectionString,
   normalizeAccount,
   resolveSettings,
   BUILTIN_DEFAULTS,
@@ -553,10 +555,14 @@ export class PostmarkService {
       },
 
       CONNECT_TOKEN: async ({ token, serverUrl }) => {
-        await this.applyServerUrl(serverUrl);
-        const trimmed = token.trim();
-        if (!/^[A-Za-z0-9_-]{20,200}$/.test(trimmed))
-          throw new HandlerError('VALIDATION', 'That doesn’t look like a Postmark token');
+        const parsed = parseConnectionString(token);
+        if (!parsed)
+          throw new HandlerError(
+            'VALIDATION',
+            'That doesn’t look like a Postmark connection string or token',
+          );
+        await this.applyServerUrl(parsed.serverUrl ?? serverUrl);
+        const trimmed = parsed.token;
         await setLocal({ auth: { token: trimmed, email: '' } });
         try {
           const me = await this.api.me();
@@ -566,6 +572,17 @@ export class PostmarkService {
           await removeLocal(['auth']);
           throw err;
         }
+      },
+
+      GET_CONNECTION_STRING: async (_p, ctx) => {
+        // Belt and braces: the router already keeps this away from content scripts.
+        if (!ctx.fromExtensionPage)
+          throw new HandlerError('VALIDATION', 'Only available on the options page');
+        const [auth, serverUrl] = await Promise.all([getLocal('auth'), getLocal('serverUrl')]);
+        if (!auth) throw new HandlerError('NOT_AUTHENTICATED', 'Not signed in to Postmark');
+        return {
+          connectionString: formatConnectionString(auth.token, serverUrl ?? DEFAULT_SERVER_URL),
+        };
       },
 
       LOGOUT: async () => {

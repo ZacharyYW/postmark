@@ -5,3 +5,4 @@ export * from './schemas';
 export * from './settings';
 export * from './bus';
 export * from './time';
+export * from './connection';

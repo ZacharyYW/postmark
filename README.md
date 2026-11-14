@@ -92,7 +92,7 @@ npm run build:chrome -w extension        # or just one target
 ### Chrome
 
 1. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and select `extension/dist/chrome`.
-2. The options page opens. Enter an email and click **Register**, or use **Connect with an existing token** (see the demo below).
+2. The options page opens. Enter an email and click **Register**, or use **Connect with a connection string from another install** (see the demo below).
 3. Open Gmail and reload the tab.
 
 ### Firefox
@@ -189,18 +189,12 @@ That's it. Nothing needs to keep running on your computer, and it can be off.
 
 All installs that share a login token share one account: the same tracked emails, opens and reminders. The server only stores a hash of the token, so you copy it from an install that's already logged in.
 
-**Get your token (from a logged-in install):**
+**Copy your connection string (from a logged-in install):**
 
 1. Open Postmark → **Options** on that install.
-2. Right-click the page → **Inspect** → **Console**. Use the Options page's console (or `chrome://extensions` → Postmark → *service worker*), not Gmail's: other pages can't read extension storage.
-3. Run:
-   ```js
-   chrome.storage.local.get('auth').then(r => console.log(r.auth.token))
-   ```
-   If Chrome refuses to paste, type `allow pasting`, press Enter, and paste again.
-4. Copy the printed string (without the quotes).
+2. Under **Postmark account → Connect another browser**, click **Show connection string** → **Copy**.
 
-The token is a password for all your tracking data. Don't post it or share it, and don't give it to someone else so they can "use your account": they'd see all your tracked emails and you'd see theirs.
+The string looks like `<token>@<server URL>`, so it carries the server address as well as the token. It works like a password for all your tracking data. Don't post it or share it, and don't give it to someone else so they can "use your account": they'd see all your tracked emails and you'd see theirs.
 
 **No install logged in any more** (e.g. you reinstalled)? Issue a new token from the repo folder:
 
@@ -208,13 +202,12 @@ The token is a password for all your tracking data. Don't post it or share it, a
 npm run cf:reset-token -- --email you@gmail.com
 ```
 
-This **replaces** the old token, so every install that was logged in gets logged out. Paste the new one into all of them.
+This **replaces** the old token, so every install that was logged in gets logged out. Paste the new one into all of them (a bare token works too; set **Server URL** first in that case).
 
 **Connect the other install:**
 
-1. **Options** → **Server URL** → the same `workers.dev` address → **Save server**.
-2. Open **Connect with an existing token** → paste the token → **Connect**.
-3. Reload your Gmail tabs.
+1. **Options** → open **Connect with a connection string from another install** → paste → **Connect**. The server URL is filled in from the string.
+2. Reload your Gmail tabs.
 
 Each install raises its own desktop notifications, so with Postmark on two computers you get each alert on both.
 
@@ -241,7 +234,7 @@ npm run simulate          # hits the latest message's pixel with Gmail-proxy / A
 npm run simulate -- --account alex.work@example.com --click
 ```
 
-`seed` prints a token (also saved to `.postmark-demo-token`). Paste it into **Options → Connect with an existing token** and open the popup to see the demo data.
+`seed` prints a token (also saved to `.postmark-demo-token`). Paste it into **Options → Connect with a connection string from another install** and open the popup to see the demo data.
 
 ## Manual test checklist (Gmail)
 

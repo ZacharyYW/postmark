@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   BUILTIN_DEFAULTS,
+  formatConnectionString,
+  parseConnectionString,
   CreateMessageReq,
   gmailThreadUrl,
   isInQuietHours,
@@ -142,4 +144,32 @@ describe('untilTime', () => {
     ['2026-01-01T15:00:00Z', 'in 3 h'],
     ['2026-01-04T12:00:00Z', 'in 3 d'],
   ])('%s → %s', (iso, out) => expect(untilTime(iso, now)).toBe(out));
+});
+
+describe('connection strings', () => {
+  const tok = 'abcdefghijklmnopqrstuvwxyz_-0123456789';
+  it('round-trips token + server', () => {
+    const s = formatConnectionString(tok, 'https://pm.example.dev/');
+    expect(s).toBe(`${tok}@https://pm.example.dev`);
+    expect(parseConnectionString(s)).toEqual({ token: tok, serverUrl: 'https://pm.example.dev' });
+  });
+  it('accepts a bare token and trims whitespace', () => {
+    expect(parseConnectionString(`  ${tok}\n`)).toEqual({ token: tok, serverUrl: null });
+  });
+  it('keeps the port in the server part', () => {
+    expect(parseConnectionString(`${tok}@http://localhost:8787`)?.serverUrl).toBe(
+      'http://localhost:8787',
+    );
+  });
+  it('rejects junk', () => {
+    for (const bad of [
+      '',
+      'short',
+      `${tok}@`,
+      `${tok}@ftp://x`,
+      `bad token@https://x.dev`,
+      `@https://x.dev`,
+    ])
+      expect(parseConnectionString(bad)).toBeNull();
+  });
 });
